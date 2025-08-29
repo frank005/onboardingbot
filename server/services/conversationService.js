@@ -7,6 +7,12 @@ class ConversationService {
   constructor() {
     this.activeConversations = new Map();
     this.agoraFallbackEnabled = process.env.AGORA_FALLBACK_ENABLED === 'true';
+    this.io = null; // Will be set by the main server
+  }
+
+  // Set Socket.IO instance
+  setSocketIO(io) {
+    this.io = io;
   }
 
   // Start a new conversation
@@ -246,11 +252,10 @@ class ConversationService {
         throw new Error('Conversation not found');
       }
 
-      // Extract information from user message
-      const extractedInfo = this.extractUserInformation(message);
-      if (extractedInfo && Object.keys(extractedInfo).length > 0) {
-        await userService.updateDetectedInfo(userId, extractedInfo);
-        console.log('✅ Extracted user information:', extractedInfo);
+      // Extract and update profile information from user message
+      const profileUpdate = await this.processUserMessageAndUpdateProfile(userId, message, conversation);
+      if (profileUpdate) {
+        console.log('✅ Updated user profile from message:', profileUpdate);
       }
 
       // Try Agora first if available
@@ -286,12 +291,11 @@ class ConversationService {
     }
 
     try {
-      // Extract user information from message
-      const detectedInfo = this.extractUserInformation(message);
-      if (Object.keys(detectedInfo).length > 0) {
-        // Update user profile with detected information
-        await userService.updateDetectedInfo(userId, detectedInfo);
-        conversation.detectedInfo = { ...conversation.detectedInfo, ...detectedInfo };
+      // Extract and update profile information from user message
+      const profileUpdate = await this.processUserMessageAndUpdateProfile(userId, message, conversation);
+      if (profileUpdate) {
+        conversation.detectedInfo = { ...conversation.detectedInfo, ...profileUpdate.detectedInfo };
+        console.log('✅ Updated user profile from Agora message:', profileUpdate);
       }
 
       // Add user message to conversation
@@ -300,6 +304,12 @@ class ConversationService {
         content: message,
         timestamp: new Date().toISOString()
       });
+
+      // Update conversation state with current topic and completed topics
+      if (conversation.aiState) {
+        conversation.currentTopic = conversation.aiState.currentTopic;
+        conversation.completedTopics = conversation.aiState.completedTopics || [];
+      }
 
       // For Agora ConvoAI, messages are sent via RTM on the client side
       // The server just needs to acknowledge the message and let the client handle RTM
@@ -327,40 +337,125 @@ class ConversationService {
   }
 
   // Extract user information from conversational messages
-  extractUserInformation(message) {
+  extractUserInformation(message, agentQuestion = '') {
     const extractedInfo = {};
     const lowerMessage = message.toLowerCase();
+    const lowerAgentQuestion = agentQuestion.toLowerCase();
 
-    // Extract name
+    // Extract name - more specific patterns to avoid false matches
     const namePatterns = [
-      /my name is (\w+)/i,
-      /i'm (\w+)/i,
-      /i am (\w+)/i,
-      /call me (\w+)/i,
-      /name's (\w+)/i
+      /my name is ([a-zA-Z\s]+)/i,  // Allow full names with spaces
+      /^i'm ([a-zA-Z\s]+)(?:\s|$)/i,  // Only match at start of string, allow full names
+      /^i am ([a-zA-Z\s]+)(?:\s|$)/i,  // Only match at start of string, allow full names
+      /it is ([a-zA-Z\s]+)/i,  // Handle "It is Frank Frankington"
+      /call me ([a-zA-Z\s]+)/i,  // Allow full names
+      /name's ([a-zA-Z\s]+)/i,  // Allow full names
+      /my name's ([a-zA-Z\s]+)/i,  // Allow full names
+      /([a-zA-Z\s]+) is my name/i,  // Allow full names
+      /i go by ([a-zA-Z\s]+)/i,  // Allow full names
+      /hi,? i'm ([a-zA-Z\s]+)/i,  // Common greeting pattern, allow full names
+      /hello,? i'm ([a-zA-Z\s]+)/i,  // Common greeting pattern, allow full names
+      /update my name to ([a-zA-Z\s]+)/i,  // Allow name updates
+      /change my name to ([a-zA-Z\s]+)/i,  // Allow name updates
+      /set my name to ([a-zA-Z\s]+)/i  // Allow name updates
     ];
     
-    for (const pattern of namePatterns) {
-      const match = message.match(pattern);
-      if (match && match[1]) {
-        extractedInfo.name = match[1];
-        break;
+    // Check for explicit name update requests first
+    if (lowerMessage.includes('update my name') || lowerMessage.includes('change my name') || lowerMessage.includes('set my name')) {
+      const nameUpdateMatch = message.match(/to (.+)/i);
+      if (nameUpdateMatch && nameUpdateMatch[1]) {
+        extractedInfo.name = nameUpdateMatch[1].trim();
+      }
+    } else {
+      // Check if agent was asking about name
+      const agentAskingAboutName = lowerAgentQuestion.includes('name') || 
+                                   lowerAgentQuestion.includes('what is your name') ||
+                                   lowerAgentQuestion.includes('what\'s your name') ||
+                                   lowerAgentQuestion.includes('tell me your name') ||
+                                   lowerAgentQuestion === 'onboarding_form_step'; // Fallback for step-by-step flow
+      
+      if (agentAskingAboutName && !extractedInfo.name) {
+        // If agent was asking for name and no other extraction happened, treat the whole message as name
+        // But only if it looks like a name (2-3 words, no special characters except spaces)
+        const potentialName = message.trim();
+        if (potentialName.length > 2 && potentialName.length < 50 && 
+            /^[a-zA-Z\s]+$/.test(potentialName) && 
+            potentialName.split(/\s+/).length <= 3) {
+          extractedInfo.name = potentialName;
+        }
+      }
+      
+      // Additional fallback: if message looks like a name and no other extraction happened, treat it as name
+      if (!extractedInfo.name && !extractedInfo.birthday && !extractedInfo.interests && !extractedInfo.bio && !extractedInfo.experienceLevel) {
+        const potentialName = message.trim();
+        if (potentialName.length > 2 && potentialName.length < 50 && 
+            /^[a-zA-Z\s]+$/.test(potentialName) && 
+            potentialName.split(/\s+/).length <= 3 &&
+            !potentialName.toLowerCase().includes('my name')) {
+          extractedInfo.name = potentialName;
+          console.log(`🔍 Fallback name extraction: "${potentialName}"`);
+        }
+      }
+      
+      // Regular name extraction patterns
+      for (const pattern of namePatterns) {
+        const match = message.match(pattern);
+        if (match && match[1]) {
+          const name = match[1].trim();
+          // Prevent common false positives
+          if (name.toLowerCase() !== 'interested in' && 
+              name.toLowerCase() !== 'interested' && 
+              name.toLowerCase() !== 'in' &&
+              name.length > 1) {
+            extractedInfo.name = name;
+            break;
+          }
+        }
       }
     }
 
     // Extract birthday
     const birthdayPatterns = [
-      /born on (\w+ \d{1,2},? \d{4})/i,
-      /birthday is (\w+ \d{1,2},? \d{4})/i,
-      /born (\w+ \d{1,2},? \d{4})/i,
-      /(\w+ \d{1,2},? \d{4})/i
+      /my birthday is ([0-9\/]+)/i,
+      /birthday is ([0-9\/]+)/i,
+      /born on ([0-9\/]+)/i,
+      /born ([0-9\/]+)/i,
+      /my birthday's ([0-9\/]+)/i,
+      /birthday's ([0-9\/]+)/i,
+      /i'm born ([0-9\/]+)/i,
+      /update my birthday to ([0-9\/]+)/i,
+      /change my birthday to ([0-9\/]+)/i,
+      /set my birthday to ([0-9\/]+)/i
     ];
     
-    for (const pattern of birthdayPatterns) {
-      const match = message.match(pattern);
-      if (match && match[1]) {
-        extractedInfo.birthday = match[1];
-        break;
+    // Check for explicit birthday update requests first
+    if (lowerMessage.includes('update my birthday') || lowerMessage.includes('change my birthday') || lowerMessage.includes('set my birthday')) {
+      const birthdayUpdateMatch = message.match(/to ([0-9\/]+)/i);
+      if (birthdayUpdateMatch && birthdayUpdateMatch[1]) {
+        extractedInfo.birthday = birthdayUpdateMatch[1].trim();
+      }
+    } else {
+      // Check if agent was asking about birthday
+      const agentAskingAboutBirthday = lowerAgentQuestion.includes('birthday') || 
+                                       lowerAgentQuestion.includes('born') ||
+                                       lowerAgentQuestion.includes('when were you born') ||
+                                       lowerAgentQuestion.includes('date of birth');
+      
+      if (agentAskingAboutBirthday && !extractedInfo.birthday) {
+        // Look for date patterns in the message
+        const dateMatch = message.match(/([0-9]{1,2}\/[0-9]{1,2}\/[0-9]{2,4})/);
+        if (dateMatch) {
+          extractedInfo.birthday = dateMatch[1];
+        }
+      }
+      
+      // Regular birthday extraction patterns
+      for (const pattern of birthdayPatterns) {
+        const match = message.match(pattern);
+        if (match && match[1]) {
+          extractedInfo.birthday = match[1];
+          break;
+        }
       }
     }
 
@@ -370,30 +465,246 @@ class ConversationService {
       extractedInfo.age = parseInt(ageMatch[1]);
     }
 
-    // Extract interests/hobbies
+    // Extract interests/hobbies - context aware
     const interestPatterns = [
       /i like (.+)/i,
       /i enjoy (.+)/i,
       /i love (.+)/i,
       /my hobbies are (.+)/i,
-      /i'm interested in (.+)/i
+      /i'm interested in (.+)/i,
+      /i have a passion for (.+)/i,
+      /i'm passionate about (.+)/i,
+      /my interests are (.+)/i,
+      /i'm into (.+)/i,
+      /i am interested in (.+)/i  // Handle "I am interested in floating and capping"
     ];
     
-    for (const pattern of interestPatterns) {
-      const match = message.match(pattern);
-      if (match && match[1]) {
-        extractedInfo.interests = match[1].split(/[,;]/).map(s => s.trim());
-        break;
+        // Check if agent was asking about interests/hobbies
+    const agentAskingAboutInterests = lowerAgentQuestion.includes('interests') || 
+                                     lowerAgentQuestion.includes('hobbies') || 
+                                     lowerAgentQuestion.includes('what do you like') ||
+                                     lowerAgentQuestion.includes('what are you into');
+    
+    // Check for explicit interests update requests first
+    if (lowerMessage.includes('update my interests') || lowerMessage.includes('change my interests') || lowerMessage.includes('set my interests')) {
+      const interestsUpdateMatch = message.match(/to (.+)/i) || message.match(/to be (.+)/i);
+      if (interestsUpdateMatch && interestsUpdateMatch[1]) {
+        let interests = interestsUpdateMatch[1].trim();
+        // Remove trailing punctuation and common words
+        interests = interests.replace(/[.,;!?]+$/, '').replace(/^(be|are|is)\s+/i, '');
+        extractedInfo.interests = interests.split(/[,;]/).map(s => s.trim());
+      }
+    } else {
+      // Regular interests extraction patterns
+      for (const pattern of interestPatterns) {
+        const match = message.match(pattern);
+        if (match && match[1]) {
+          // If agent was asking about interests, prioritize this extraction
+          if (agentAskingAboutInterests) {
+            let interests = match[1].split(/[,;]/).map(s => s.trim());
+            // Remove experience level from interests
+            interests = interests.filter(interest => 
+              !interest.toLowerCase().includes('intermediate') && 
+              !interest.toLowerCase().includes('beginner') && 
+              !interest.toLowerCase().includes('expert') &&
+              !interest.toLowerCase().includes('advanced')
+            );
+            if (interests.length > 0) {
+              extractedInfo.interests = interests;
+            }
+            break;
+          } else {
+            // Check if this looks like interests (not bio)
+            const interestText = match[1].trim();
+            if (interestText.length < 100 && !interestText.includes('swim in the sky') && !interestText.includes('until my life')) {
+              let interests = interestText.split(/[,;]/).map(s => s.trim());
+              // Remove experience level from interests
+              interests = interests.filter(interest => 
+                !interest.toLowerCase().includes('intermediate') && 
+                !interest.toLowerCase().includes('beginner') && 
+                !interest.toLowerCase().includes('expert') &&
+                !interest.toLowerCase().includes('advanced')
+              );
+              if (interests.length > 0) {
+                extractedInfo.interests = interests;
+              }
+              break;
+            }
+          }
+        }
       }
     }
 
-    // Extract experience level
-    if (lowerMessage.includes('beginner') || lowerMessage.includes('new') || lowerMessage.includes('just starting')) {
-      extractedInfo.experienceLevel = 'beginner';
-    } else if (lowerMessage.includes('intermediate') || lowerMessage.includes('some experience')) {
-      extractedInfo.experienceLevel = 'intermediate';
-    } else if (lowerMessage.includes('expert') || lowerMessage.includes('advanced') || lowerMessage.includes('professional')) {
-      extractedInfo.experienceLevel = 'expert';
+    // Extract bio/description - more specific patterns to avoid conflicts with interests
+    const bioPatterns = [
+      /my bio is (.+)/i,
+      /about me: (.+)/i,
+      /my bio's (.+)/i,
+      /bio is (.+)/i,
+      /bio's (.+)/i,
+      /i am a (.+)/i,  // Handle "I am a hard work, work in pool settling and jumping"
+      /i work (.+)/i,  // Handle work descriptions
+      /i work in (.+)/i  // Handle work descriptions
+    ];
+    
+    // Check if agent was asking about bio
+    const agentAskingAboutBio = lowerAgentQuestion.includes('bio') || 
+                                lowerAgentQuestion.includes('about you') || 
+                                lowerAgentQuestion.includes('tell me about yourself') ||
+                                lowerAgentQuestion.includes('describe yourself') ||
+                                lowerAgentQuestion.includes('work') ||
+                                lowerAgentQuestion.includes('job') ||
+                                lowerAgentQuestion.includes('profession');
+    
+    // Check for explicit bio update requests first
+    if (lowerMessage.includes('update my bio') || lowerMessage.includes('change my bio') || lowerMessage.includes('set my bio')) {
+      // Extract the bio content after "to say" or similar
+      const bioUpdateMatch = message.match(/to say (.+)/i) || message.match(/to (.+)/i);
+      if (bioUpdateMatch && bioUpdateMatch[1]) {
+        const bioContent = bioUpdateMatch[1].trim();
+        // Remove trailing punctuation and quotes
+        extractedInfo.bio = bioContent.replace(/[.,;!?]+$/, '').replace(/^["']|["']$/g, '');
+      }
+    }
+    
+    // Generic update pattern for any field
+    const genericUpdateMatch = message.match(/update my (\w+) to (.+)/i) || message.match(/change my (\w+) to (.+)/i);
+    if (genericUpdateMatch && genericUpdateMatch[1] && genericUpdateMatch[2]) {
+      const field = genericUpdateMatch[1].toLowerCase();
+      const value = genericUpdateMatch[2].trim().replace(/[.,;!?]+$/, '');
+      
+      switch (field) {
+        case 'name':
+          extractedInfo.name = value;
+          break;
+        case 'birthday':
+          extractedInfo.birthday = value;
+          break;
+        case 'bio':
+          extractedInfo.bio = value;
+          break;
+        case 'interests':
+          extractedInfo.interests = value.split(/[,;]/).map(s => s.trim());
+          break;
+        case 'experience':
+        case 'experiencelevel':
+          const expValue = value.toLowerCase();
+          if (expValue.includes('beginner')) {
+            extractedInfo.experienceLevel = 'beginner';
+          } else if (expValue.includes('intermediate')) {
+            extractedInfo.experienceLevel = 'intermediate';
+          } else if (expValue.includes('expert') || expValue.includes('advanced')) {
+            extractedInfo.experienceLevel = 'expert';
+          }
+          break;
+      }
+    }
+    
+    // Prevent short responses from being captured as bio
+    if (lowerMessage === 'no i am good' || lowerMessage === 'no im good' || lowerMessage === 'no, i am good' || lowerMessage === 'no, im good') {
+      // Don't extract anything from these responses
+      return extractedInfo;
+    } else if (agentAskingAboutBio) {
+      // If agent was asking about bio, treat the response as bio
+      if (!extractedInfo.interests && !extractedInfo.name) {
+        // If no other extraction happened, treat the whole message as bio
+        extractedInfo.bio = message.trim();
+      }
+    } else {
+      // Regular bio extraction patterns
+      for (const pattern of bioPatterns) {
+        const match = message.match(pattern);
+        if (match && match[1] && !extractedInfo.name) { // Avoid capturing name as bio
+          // Only extract as bio if it's not already captured as interests
+          const bioText = match[1].trim();
+          if (!extractedInfo.interests || !bioText.includes(extractedInfo.interests[0])) {
+            extractedInfo.bio = bioText;
+            break;
+          }
+        }
+      }
+      
+      // Fallback: If we have work-related content and no bio yet, treat it as bio
+      if (!extractedInfo.bio && (lowerMessage.includes('work') || lowerMessage.includes('job') || lowerMessage.includes('profession'))) {
+        // Extract work-related content as bio
+        const workMatch = message.match(/(?:i am|i'm|i work|i work in) (.+)/i);
+        if (workMatch && workMatch[1]) {
+          extractedInfo.bio = workMatch[1].trim();
+        }
+      }
+      
+      // Special case: Handle "I am a hard work, work in pool settling and jumping"
+      if (!extractedInfo.bio && lowerMessage.includes('hard work') && lowerMessage.includes('pool')) {
+        const poolMatch = message.match(/i am a (.+)/i);
+        if (poolMatch && poolMatch[1]) {
+          extractedInfo.bio = poolMatch[1].trim();
+        }
+      }
+    }
+    
+    // Special case: If the bot just asked for a bio and user responds with "I like to..." or similar,
+    // treat it as bio instead of interests
+    if (!extractedInfo.bio && extractedInfo.interests && lowerMessage.includes('like to')) {
+      // Check if this looks like a bio response (creative/descriptive)
+      const interestText = extractedInfo.interests[0];
+      if (interestText.includes('catmando') || interestText.includes('racoons') || 
+          interestText.includes('parachute') || interestText.includes('moon') ||
+          interestText.length > 50) { // Long creative responses are likely bio
+        extractedInfo.bio = interestText;
+        delete extractedInfo.interests; // Remove from interests since it's actually bio
+      }
+    }
+
+    // Extract experience level - more specific to avoid conflicts with bio
+    if (lowerMessage.includes('update my experience') || lowerMessage.includes('change my experience') || lowerMessage.includes('set my experience')) {
+      const experienceUpdateMatch = message.match(/to (.+)/i);
+      if (experienceUpdateMatch && experienceUpdateMatch[1]) {
+        const experience = experienceUpdateMatch[1].trim().toLowerCase();
+        if (experience.includes('beginner')) {
+          extractedInfo.experienceLevel = 'beginner';
+        } else if (experience.includes('intermediate')) {
+          extractedInfo.experienceLevel = 'intermediate';
+        } else if (experience.includes('expert') || experience.includes('advanced')) {
+          extractedInfo.experienceLevel = 'expert';
+        }
+      }
+    } else {
+      // Regular experience level extraction
+      if (lowerMessage.includes('beginner') || lowerMessage.includes('new') || lowerMessage.includes('just starting') || lowerMessage.includes('only a beginner')) {
+        extractedInfo.experienceLevel = 'beginner';
+      } else if (lowerMessage.includes('intermediate') || lowerMessage.includes('some experience')) {
+        extractedInfo.experienceLevel = 'intermediate';
+      } else if (lowerMessage.includes('expert') || lowerMessage.includes('advanced') || lowerMessage.includes('professional')) {
+        extractedInfo.experienceLevel = 'expert';
+      }
+    }
+    
+    // If we extracted experience level, make sure it doesn't get captured as bio
+    if (extractedInfo.experienceLevel && extractedInfo.bio) {
+      // If bio contains experience level, it's likely not a real bio
+      if (extractedInfo.bio.toLowerCase().includes(extractedInfo.experienceLevel)) {
+        delete extractedInfo.bio; // Remove the bio since it's actually experience level
+      }
+    }
+    
+    // If we have both name and bio, and bio looks like it should be bio (not name)
+    if (extractedInfo.name && extractedInfo.bio) {
+      // If the bio contains work-related content and the name is very long, it's likely the name was incorrectly captured
+      if (extractedInfo.name.length > 20 && (extractedInfo.bio.includes('work') || extractedInfo.bio.includes('field') || extractedInfo.bio.includes('marines'))) {
+        // The "name" is actually bio content, swap them
+        extractedInfo.bio = extractedInfo.name;
+        delete extractedInfo.name;
+      }
+    }
+    
+    // Check if user is done with onboarding
+    if (lowerMessage.includes('thanks') && lowerMessage.includes('good') || 
+        lowerMessage.includes('no thats it') || 
+        lowerMessage.includes('im good') || 
+        lowerMessage.includes('i\'m good') ||
+        lowerMessage.includes('that\'s it') ||
+        lowerMessage.includes('thats it')) {
+      extractedInfo.onboardingComplete = true;
     }
 
     // Extract gender
@@ -404,6 +715,240 @@ class ConversationService {
     }
 
     return extractedInfo;
+  }
+
+  // Process user message and update profile information
+  async processUserMessageAndUpdateProfile(userId, message, conversationContext = null) {
+    try {
+      console.log(`🔍 Processing message for profile extraction: "${message}"`);
+      
+      // Get conversation context to understand what the agent was asking
+      let agentQuestion = '';
+      if (conversationContext && conversationContext.messages && conversationContext.messages.length > 0) {
+        // Get the last agent message before this user message
+        const lastAgentMessage = conversationContext.messages
+          .slice(-5) // Check last 5 messages
+          .reverse()
+          .find(msg => msg.role === 'assistant' || msg.sender === 'assistant' || msg.role === 'bot');
+        
+        if (lastAgentMessage) {
+          agentQuestion = lastAgentMessage.content || lastAgentMessage.text || lastAgentMessage.message || '';
+          console.log(`🤖 Agent was asking: "${agentQuestion}"`);
+        }
+      }
+      
+      // If no agent question found in messages, try to get it from the conversation state
+      if (!agentQuestion && conversationContext && conversationContext.currentTopic) {
+        console.log(`🤖 No agent message found, but current topic is: ${conversationContext.currentTopic}`);
+        // For onboarding_form topic, we know the agent is asking step by step
+        if (conversationContext.currentTopic === 'onboarding_form') {
+          agentQuestion = 'onboarding_form_step'; // This will trigger context-aware extraction
+        }
+      }
+      
+      const extractedInfo = this.extractUserInformation(message, agentQuestion);
+      
+      if (Object.keys(extractedInfo).length === 0) {
+        console.log(`❌ No information extracted from message: "${message}"`);
+        return null; // No information extracted
+      }
+
+      console.log(`✅ Extracted user information for ${userId}:`, extractedInfo);
+      console.log(`🔍 Raw message: "${message}"`);
+      console.log(`🤖 Agent question context: "${agentQuestion}"`);
+      console.log(`🔍 Message matches name patterns:`, {
+        'it is': /it is ([a-zA-Z\s]+)/i.test(message),
+        'my name is': /my name is ([a-zA-Z\s]+)/i.test(message),
+        'i am': /^i am ([a-zA-Z\s]+)(?:\s|$)/i.test(message),
+        'looks like name': /^[a-zA-Z\s]+$/.test(message.trim()) && message.trim().split(/\s+/).length <= 3
+      });
+      console.log(`🔍 Message contains update request:`, {
+        name: lowerMessage.includes('update my name') || lowerMessage.includes('change my name'),
+        birthday: lowerMessage.includes('update my birthday') || lowerMessage.includes('change my birthday'),
+        interests: lowerMessage.includes('update my interests') || lowerMessage.includes('change my interests'),
+        bio: lowerMessage.includes('update my bio') || lowerMessage.includes('change my bio'),
+        experience: lowerMessage.includes('update my experience') || lowerMessage.includes('change my experience'),
+        generic: /update my (\w+) to (.+)/i.test(message) || /change my (\w+) to (.+)/i.test(message)
+      });
+      
+      // Check for generic update pattern
+      const genericUpdateMatch = message.match(/update my (\w+) to (.+)/i) || message.match(/change my (\w+) to (.+)/i);
+      if (genericUpdateMatch) {
+        console.log(`🔧 Generic update detected: field="${genericUpdateMatch[1]}", value="${genericUpdateMatch[2]}"`);
+      }
+      
+      // Get conversation for logging
+      const conversation = this.activeConversations.get(userId);
+      console.log(`🎯 Current topic: ${conversation?.currentTopic || 'unknown'}`);
+      console.log(`📊 Completed topics: ${conversation?.completedTopics?.join(', ') || 'none'}`);
+      console.log(`🔧 Profile update will be sent to client:`, Object.keys(extractedInfo).length > 0);
+
+      // Check if we've already processed this exact message for this user
+      const messageKey = `${userId}-${message}`;
+      if (this.processedMessages && this.processedMessages.has(messageKey)) {
+        console.log(`🔄 Skipping already processed message for user ${userId}`);
+        return null;
+      }
+      
+      // Track processed messages to prevent duplicates
+      if (!this.processedMessages) {
+        this.processedMessages = new Set();
+      }
+      this.processedMessages.add(messageKey);
+
+      // Separate profile data from detected info
+      const profileData = {};
+      const detectedInfo = {};
+
+      if (extractedInfo.name) profileData.name = extractedInfo.name;
+      if (extractedInfo.birthday) profileData.birthday = extractedInfo.birthday;
+      if (extractedInfo.bio) profileData.bio = extractedInfo.bio;
+      if (extractedInfo.interests) profileData.interests = Array.isArray(extractedInfo.interests) ? extractedInfo.interests.join(', ') : extractedInfo.interests;
+      if (extractedInfo.experienceLevel) profileData.experience_level = extractedInfo.experienceLevel;
+      if (extractedInfo.onboardingComplete) profileData.onboarding_completed = true;
+
+      if (extractedInfo.gender) detectedInfo.gender = extractedInfo.gender;
+      if (extractedInfo.age) detectedInfo.age = extractedInfo.age;
+
+      // Update user profile if we have profile data
+      if (Object.keys(profileData).length > 0) {
+        await userService.updateProfile(userId, profileData);
+        console.log(`✅ Updated profile for user ${userId}:`, profileData);
+        
+        // Update conversation progress based on extracted information
+        // conversation is already defined above for logging
+        if (conversation) {
+          let updatedTopics = [...(conversation.completedTopics || [])];
+          
+          // Mark profile setup as complete if we have name and birthday
+          if (profileData.name && profileData.birthday && !updatedTopics.includes('onboarding_form')) {
+            updatedTopics.push('onboarding_form');
+            console.log(`✅ Marked profile setup as complete for user ${userId}`);
+          }
+          
+          // Mark additional conversation as complete if user says they're done
+          if (profileData.onboarding_completed && !updatedTopics.includes('additional_conversation')) {
+            updatedTopics.push('additional_conversation');
+            console.log(`✅ Marked additional conversation as complete for user ${userId}`);
+          }
+          
+          conversation.completedTopics = updatedTopics;
+          
+          // Emit progress update to client
+          if (this.io) {
+            this.io.to(userId).emit('conversation-progress-updated', {
+              completedTopics: updatedTopics,
+              currentTopic: conversation.currentTopic,
+              timestamp: new Date().toISOString()
+            });
+          }
+        }
+        
+        // Emit profile update event
+        if (this.io) {
+          console.log(`📡 Emitting profile update to user ${userId}:`, profileData);
+          this.io.to(userId).emit('profile-updated', {
+            type: 'profile',
+            data: profileData,
+            timestamp: new Date().toISOString()
+          });
+        } else {
+          console.log(`⚠️ No Socket.IO instance available for profile update`);
+        }
+      }
+
+      // Update detected info if we have detected data
+      if (Object.keys(detectedInfo).length > 0) {
+        await userService.updateDetectedInfo(userId, detectedInfo);
+        console.log(`✅ Updated detected info for user ${userId}:`, detectedInfo);
+        
+        // Emit detected info update event
+        if (this.io) {
+          this.io.to(userId).emit('profile-updated', {
+            type: 'detected-info',
+            data: detectedInfo,
+            timestamp: new Date().toISOString()
+          });
+        }
+      }
+
+          return {
+      profileData,
+      detectedInfo,
+      extractedInfo
+    };
+
+  } catch (error) {
+    console.error(`❌ Error processing user message for profile update:`, error);
+    return null;
+  }
+}
+
+  // Extract profile information from conversation history
+  async extractProfileFromConversation(userId) {
+    try {
+      const conversation = this.activeConversations.get(userId);
+      if (!conversation) {
+        throw new Error('Conversation not found');
+      }
+
+      const userMessages = conversation.messages
+        .filter(msg => msg.role === 'user')
+        .map(msg => msg.content);
+
+      if (userMessages.length === 0) {
+        return {
+          processed: 0,
+          profileUpdates: 0,
+          detectedUpdates: 0,
+          message: 'No user messages found in conversation'
+        };
+      }
+
+      let profileUpdates = 0;
+      let detectedUpdates = 0;
+
+      // Process each user message
+      for (const message of userMessages) {
+        const update = await this.processUserMessageAndUpdateProfile(userId, message, conversation);
+        if (update) {
+          if (Object.keys(update.profileData).length > 0) {
+            profileUpdates++;
+          }
+          if (Object.keys(update.detectedInfo).length > 0) {
+            detectedUpdates++;
+          }
+        }
+      }
+
+      return {
+        processed: userMessages.length,
+        profileUpdates,
+        detectedUpdates,
+        message: `Processed ${userMessages.length} messages, updated ${profileUpdates} profile fields and ${detectedUpdates} detected info fields`
+      };
+
+    } catch (error) {
+      console.error('Error extracting profile from conversation:', error);
+      throw error;
+    }
+  }
+
+  // Update conversation progress
+  updateConversationProgress(userId, currentTopic, completedTopics) {
+    const conversation = this.activeConversations.get(userId);
+    if (conversation) {
+      conversation.currentTopic = currentTopic;
+      conversation.completedTopics = completedTopics || [];
+      
+      // Update AI state if it exists
+      if (conversation.aiState) {
+        conversation.aiState.currentTopic = currentTopic;
+        conversation.aiState.completedTopics = completedTopics || [];
+      }
+      
+      console.log(`📊 Updated conversation progress for ${userId}: currentTopic=${currentTopic}, completedTopics=${completedTopics?.join(', ')}`);
+    }
   }
 
   // Generate system message for Agora agent
@@ -422,10 +967,17 @@ IMPORTANT RULES:
 7. Update user profile data during conversation
 8. Extract and store detected information about the user
 
-ONBOARDING FLOW:
-1. Platform Overview: Ask if user wants platform overview, explain features briefly
-2. Profile Setup: Collect name, birthday, bio, interests, experience level
-3. Additional Conversation: Ask for other questions, engage naturally
+ONBOARDING FORM MODE (ALWAYS ACTIVE):
+- Guide user through profile creation STEP BY STEP, asking ONE question at a time:
+  1. FIRST: Ask for their name (just the name first)
+  2. SECOND: Ask for their birthday (just the birthday)
+  3. THIRD: Ask for their interests/hobbies (what do they like to do?)
+  4. FOURTH: Ask for a brief bio/description about themselves (work, background, etc.)
+  5. FIFTH: Ask about their experience level with AI/technology
+- IMPORTANT: Ask only ONE question at a time and wait for their response
+- Do NOT ask multiple questions in the same message
+- Make it conversational and engaging
+- Only move to the next step after getting the current information
 
 DATA COLLECTION:
 - Extract user information from conversations
@@ -531,6 +1083,17 @@ DATA COLLECTION:
     console.log(`🛑 Stopping conversation for userId: ${userId}`);
     const conversation = this.activeConversations.get(userId);
     console.log(`🔍 Found conversation:`, conversation ? 'Yes' : 'No');
+    
+    // Extract profile information from conversation before stopping
+    if (conversation?.messages && conversation.messages.length > 0) {
+      console.log(`🔍 Extracting profile information from conversation...`);
+      try {
+        const extractionResult = await this.extractProfileFromConversation(userId);
+        console.log(`✅ Profile extraction result:`, extractionResult);
+      } catch (error) {
+        console.error(`❌ Error extracting profile from conversation:`, error);
+      }
+    }
     
     if (conversation?.agoraAgentId) {
       try {

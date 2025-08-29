@@ -81,7 +81,7 @@ const waitForAgoraRTM = () => {
 
 class AgoraService {
   constructor() {
-    this.baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:3001';
+    this.baseUrl = process.env.REACT_APP_API_URL || '';
     this.currentAgentId = null;
     this.currentChannelName = null;
     this.isConnected = false;

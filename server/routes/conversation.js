@@ -330,4 +330,47 @@ router.get('/export/:userId', async (req, res) => {
   }
 });
 
+// Extract profile information from conversation history
+router.post('/extract-profile/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    const result = await conversationService.extractProfileFromConversation(userId);
+    
+    res.json({
+      success: true,
+      data: result
+    });
+
+  } catch (error) {
+    console.error('Error extracting profile from conversation:', error);
+    res.status(500).json({ 
+      error: 'Failed to extract profile from conversation',
+      message: error.message 
+    });
+  }
+});
+
+// Update conversation progress
+router.put('/progress/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { currentTopic, completedTopics } = req.body;
+    
+    conversationService.updateConversationProgress(userId, currentTopic, completedTopics);
+    
+    res.json({
+      success: true,
+      data: { currentTopic, completedTopics }
+    });
+
+  } catch (error) {
+    console.error('Error updating conversation progress:', error);
+    res.status(500).json({ 
+      error: 'Failed to update conversation progress',
+      message: error.message 
+    });
+  }
+});
+
 module.exports = router; 

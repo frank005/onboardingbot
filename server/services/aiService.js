@@ -21,7 +21,7 @@ class AIService {
   initializeConversation(userId) {
     const state = {
       userId,
-      currentTopic: 'platform_overview',
+      currentTopic: 'onboarding_form', // Start directly with onboarding form for step-by-step questioning
       completedTopics: [],
       formData: {},
       detectedInfo: {},
@@ -65,7 +65,19 @@ IMPORTANT RULES:
 5. Detect and note user preferences, interests, and skill levels
 6. Respond in a conversational tone
 7. Update user profile data during conversation
-8. Extract and store detected information about the user`;
+8. Extract and store detected information about the user
+
+ONBOARDING FORM MODE (ALWAYS ACTIVE):
+- Guide user through profile creation STEP BY STEP, asking ONE question at a time:
+  1. FIRST: Ask for their name (just the name first)
+  2. SECOND: Ask for their birthday (just the birthday)
+  3. THIRD: Ask for their interests/hobbies (what do they like to do?)
+  4. FOURTH: Ask for a brief bio/description about themselves (work, background, etc.)
+  5. FIFTH: Ask about their experience level with AI/technology
+- IMPORTANT: Ask only ONE question at a time and wait for their response
+- Do NOT ask multiple questions in the same message
+- Make it conversational and engaging
+- Only move to the next step after getting the current information`;
 
     switch (state.currentTopic) {
       case 'platform_overview':
@@ -77,16 +89,33 @@ PLATFORM OVERVIEW MODE:
 - If no, provide onboarding guide link
 - Move to onboarding form topic when appropriate
 - Detect user's technical comfort level
-- Update user profile with detected information`;
+- Update user profile with detected information
+
+ONBOARDING FORM MODE (when ready):
+- Guide user through profile creation STEP BY STEP, asking ONE question at a time:
+  1. FIRST: Ask for their name (just the name first)
+  2. SECOND: Ask for their birthday (just the birthday)
+  3. THIRD: Ask for their interests/hobbies (what do they like to do?)
+  4. FOURTH: Ask for a brief bio/description about themselves (work, background, etc.)
+  5. FIFTH: Ask about their experience level with AI/technology
+- IMPORTANT: Ask only ONE question at a time and wait for their response
+- Do NOT ask multiple questions in the same message`;
 
       case 'onboarding_form':
         return basePrompt + `
 
 ONBOARDING FORM MODE:
-- Guide user through profile creation
-- Collect: name, birthday, bio, interests, experience level
+- Guide user through profile creation STEP BY STEP, asking ONE question at a time:
+  1. FIRST: Ask for their name (just the name first)
+  2. SECOND: Ask for their birthday (just the birthday)
+  3. THIRD: Ask for their interests/hobbies (what do they like to do?)
+  4. FOURTH: Ask for a brief bio/description about themselves (work, background, etc.)
+  5. FIFTH: Ask about their experience level with AI/technology
+- IMPORTANT: Ask only ONE question at a time and wait for their response
+- Do NOT ask multiple questions in the same message
 - Make it conversational and engaging
-- Validate required fields (name, birthday)
+- Only move to the next step after getting the current information
+- When asking for bio, say something like "Now, could you please share a brief bio? It could be about your work, your background, your passions, or anything else you think is relevant."
 - Store responses in formData
 - Update user profile in real-time
 - Move to additional conversation when form is complete
@@ -109,7 +138,19 @@ ADDITIONAL CONVERSATION MODE:
 - Store conversation insights for analytics`;
 
       default:
-        return basePrompt;
+        return basePrompt + `
+
+DEFAULT ONBOARDING MODE:
+- Guide user through profile creation STEP BY STEP, asking ONE question at a time:
+  1. FIRST: Ask for their name (just the name first)
+  2. SECOND: Ask for their birthday (just the birthday)
+  3. THIRD: Ask for their interests/hobbies (what do they like to do?)
+  4. FOURTH: Ask for a brief bio/description about themselves (work, background, etc.)
+  5. FIFTH: Ask about their experience level with AI/technology
+- IMPORTANT: Ask only ONE question at a time and wait for their response
+- Do NOT ask multiple questions in the same message
+- Make it conversational and engaging
+- Only move to the next step after getting the current information`;
     }
   }
 

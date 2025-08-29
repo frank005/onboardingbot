@@ -9,7 +9,7 @@ export const useConversation = (ttsEnabled = true) => {
 
   useEffect(() => {
     // Initialize socket connection
-    const newSocket = io('http://localhost:3001');
+    const newSocket = io();
     setSocket(newSocket);
 
     // Socket event listeners

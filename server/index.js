@@ -3,6 +3,7 @@ const cors = require('cors');
 const http = require('http');
 const socketIo = require('socket.io');
 const dotenv = require('dotenv');
+const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 
 
@@ -14,7 +15,13 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
-    origin: [process.env.CLIENT_URL || "http://localhost:3000", "http://localhost:3002", "https://localhost:3002"],
+    origin: [
+      process.env.CLIENT_URL || "http://localhost:3000", 
+      "http://localhost:3002", 
+      "https://localhost:3002",
+      "https://*.ngrok.app",
+      "https://*.ngrok.io"
+    ],
     methods: ["GET", "POST"],
     credentials: true
   }
@@ -22,11 +29,20 @@ const io = socketIo(server, {
 
 // Middleware
 app.use(cors({
-  origin: [process.env.CLIENT_URL || "http://localhost:3000", "http://localhost:3002", "https://localhost:3002"],
+  origin: [
+    process.env.CLIENT_URL || "http://localhost:3000", 
+    "http://localhost:3002", 
+    "https://localhost:3002",
+    "https://*.ngrok.app",
+    "https://*.ngrok.io"
+  ],
   credentials: true
 }));
 app.use(express.json());
 app.use(express.static('public'));
+
+// Serve React app build files
+app.use(express.static(path.join(__dirname, '../client/build')));
 
 // Import modules
 const agoraService = require('./services/agoraService');
@@ -45,6 +61,9 @@ app.use('/api/conversation', require('./routes/conversation'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/tts', require('./routes/tts'));
 
+// Set Socket.IO instance for conversation service
+conversationService.setSocketIO(io);
+
 // Socket.IO connection handling
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
@@ -52,6 +71,11 @@ io.on('connection', (socket) => {
   socket.on('join-conversation', (data) => {
     socket.join(data.conversationId);
     console.log(`User ${socket.id} joined conversation ${data.conversationId}`);
+  });
+  
+  socket.on('join-user-room', (data) => {
+    socket.join(data.userId);
+    console.log(`User ${socket.id} joined user room ${data.userId}`);
   });
   
   socket.on('user-message', async (data) => {
@@ -118,12 +142,18 @@ app.get('/api/config', (req, res) => {
   });
 });
 
+// Catch-all handler: send back React's index.html file for any non-API routes
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../client/build/index.html'));
+});
+
 const PORT = process.env.PORT || 3001;
 
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📊 Health check: http://localhost:${PORT}/health`);
   console.log(`⚙️  Configuration: http://localhost:${PORT}/api/config`);
+  console.log(`🌐 React app served at: http://localhost:${PORT}`);
 });
 
 module.exports = { app, io }; 

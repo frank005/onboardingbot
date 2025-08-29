@@ -1,11 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Volume2, VolumeX, User, Bot, Database, Mic, MicOff, Settings, Camera, Square } from 'lucide-react';
+import { Send, Volume2, VolumeX, User, Bot, Database, Mic, MicOff, Camera, Square } from 'lucide-react';
 import toast from 'react-hot-toast';
+import io from 'socket.io-client';
 import MessageBubble from './MessageBubble';
 import VoiceRecorder from './VoiceRecorder';
 import UserProfileCard from './UserProfileCard';
-import ConversationProgress from './ConversationProgress';
+// import ConversationProgress from './ConversationProgress'; // Removed due to tracking issues
 import agoraService from '../services/agoraService';
 import SubtitleDisplay from './SubtitleDisplay';
 import AgoraSetup from './AgoraSetup';
@@ -42,6 +43,8 @@ const ConversationInterface = ({
   const [audioEnabled, setAudioEnabled] = useState(true);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
+  const socketRef = useRef(null);
+  const processedMessages = useRef(new Set()); // Track processed messages to prevent duplicates
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -77,6 +80,63 @@ const ConversationInterface = ({
       setUseAgora(isEnabled);
     }
   }, [agoraConnected]);
+
+  // Socket.IO connection for profile updates
+  useEffect(() => {
+    if (user?.id) {
+      // Connect to Socket.IO server
+      socketRef.current = io();
+      
+      // Join user room for profile updates
+      socketRef.current.emit('join-user-room', { userId: user.id });
+      
+      // Listen for profile updates
+      socketRef.current.on('profile-updated', (update) => {
+        console.log('📝 Received profile update:', update);
+        
+        // Add to profile updates list
+        // Only add if we don't already have this exact update
+        const newUpdate = {
+          field: Object.keys(update.data)[0],
+          value: Object.values(update.data)[0],
+          type: update.type,
+          timestamp: update.timestamp
+        };
+        
+        setProfileUpdates(prev => {
+          // Check if we already have this exact update
+          const exists = prev.some(existing => 
+            existing.field === newUpdate.field && 
+            existing.value === newUpdate.value &&
+            existing.type === newUpdate.type
+          );
+          
+          if (!exists) {
+            return [...prev, newUpdate];
+          }
+          return prev;
+        });
+        
+        // Update user data
+        if (update.type === 'profile') {
+          onUserUpdate({ profile: { ...user.profile, ...update.data } });
+        } else if (update.type === 'detected-info') {
+          onUserUpdate({ detectedInfo: { ...user.detectedInfo, ...update.data } });
+        }
+        
+        // Show toast notification
+        const fieldName = Object.keys(update.data)[0].replace(/_/g, ' ');
+        toast.success(`Updated ${fieldName}: ${Object.values(update.data)[0]}`);
+      });
+      
+      // Cleanup on unmount
+      return () => {
+        if (socketRef.current) {
+          socketRef.current.disconnect();
+        }
+      };
+    }
+  }, [user?.id, onUserUpdate, user?.profile, user?.detectedInfo]);
 
   // Handle camera image capture
   const handleImageCapture = async (imageData) => {
@@ -118,7 +178,10 @@ const ConversationInterface = ({
         setConversation(prev => ({
           id: response.conversationId || `conversation-${Date.now()}`,
           messages: [],
-          createdAt: new Date().toISOString()
+          createdAt: new Date().toISOString(),
+          completedTopics: response.completedTopics || [],
+          currentTopic: response.currentTopic || 'platform_overview',
+          provider: response.provider
         }));
         
         // Connect to Agora RTM channel
@@ -171,7 +234,7 @@ const ConversationInterface = ({
       setUseAgora(false);
       
       // Subscribe to transcription updates (both user and assistant) BEFORE subscribing to messages
-      agoraService.onAgentResponse((chatHistory) => {
+      agoraService.onAgentResponse(async (chatHistory) => {
         console.log('🎤 Transcription update via RTM callback triggered with', chatHistory?.length || 0, 'messages');
         console.log('🎤 Full chatHistory:', chatHistory);
         
@@ -210,13 +273,49 @@ const ConversationInterface = ({
                 isTemp: !(latestMessage.data.isFinal || latestMessage.data.final)
               };
               
+              // Process user messages for profile extraction (only once per unique message)
+              if (isUserMessage && message.isFinal && user?.id) {
+                // Check if we've already processed this exact message
+                const messageKey = `${user.id}-${fullText}`;
+                if (!processedMessages.current.has(messageKey)) {
+                  processedMessages.current.add(messageKey);
+                  console.log('🔍 Processing user message for profile extraction:', fullText);
+                  try {
+                    // Send message to server for profile extraction
+                    const response = await fetch('/api/conversation/message', {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                      },
+                      body: JSON.stringify({
+                        userId: user.id,
+                        message: fullText,
+                        conversationId: conversation?.id
+                      }),
+                    });
+                    
+                    if (response.ok) {
+                      console.log('✅ Profile extraction request sent for:', fullText);
+                    } else {
+                      console.warn('⚠️ Failed to send profile extraction request');
+                    }
+                  } catch (error) {
+                    console.error('❌ Error sending profile extraction request:', error);
+                  }
+                } else {
+                  console.log('🔄 Skipping already processed message:', fullText);
+                }
+              }
+              
               // Update conversation state with proper deduplication
               setConversation(prev => {
                 if (!prev) {
                   return {
                     id: `conversation-${Date.now()}`,
                     messages: [message],
-                    createdAt: new Date().toISOString()
+                    createdAt: new Date().toISOString(),
+                    completedTopics: [],
+                    currentTopic: 'platform_overview'
                   };
                 }
                 
@@ -569,6 +668,10 @@ const ConversationInterface = ({
               )}
             </button>
             
+
+            
+
+            
             <button
               onClick={async () => {
                 if (agoraConnected) {
@@ -652,13 +755,7 @@ const ConversationInterface = ({
           </div>
         </div>
 
-        {/* Conversation Progress */}
-        {isConversationStarted && (
-          <ConversationProgress 
-            completedTopics={conversation?.completedTopics || []}
-            currentTopic={conversation?.currentTopic}
-          />
-        )}
+        {/* Conversation Progress - Removed due to tracking issues */}
 
         {/* Messages */}
         <div className="h-96 overflow-y-auto mb-6 p-4 bg-gray-50 rounded-lg">
@@ -819,11 +916,18 @@ const ConversationInterface = ({
                 <div className="text-sm text-gray-900 mt-1">
                   {update.value}
                 </div>
-                {update.type === 'detected' && (
-                  <span className="inline-block mt-1 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded">
-                    Auto-detected
+                <div className="flex items-center justify-between mt-1">
+                  <span className={`inline-block px-2 py-1 text-xs rounded ${
+                    update.type === 'detected-info' 
+                      ? 'bg-blue-100 text-blue-800' 
+                      : 'bg-green-100 text-green-800'
+                  }`}>
+                    {update.type === 'detected-info' ? 'Auto-detected' : 'Profile Update'}
                   </span>
-                )}
+                  <span className="text-xs text-gray-400">
+                    {update.type === 'detected-info' ? 'From conversation' : 'From form'}
+                  </span>
+                </div>
               </div>
             ))}
           </div>

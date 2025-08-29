@@ -16,12 +16,12 @@ export const useUser = () => {
       conversationData: {}
     };
     setUser(newUser);
-    localStorage.setItem('conversational-ai-user', JSON.stringify(newUser));
+    sessionStorage.setItem('conversational-ai-user', JSON.stringify(newUser));
   }, []);
 
   useEffect(() => {
-    // Load user from localStorage or create new user
-    const savedUser = localStorage.getItem('conversational-ai-user');
+    // Load user from sessionStorage or create new user
+    const savedUser = sessionStorage.getItem('conversational-ai-user');
     if (savedUser) {
       try {
         setUser(JSON.parse(savedUser));
@@ -44,7 +44,7 @@ export const useUser = () => {
     };
 
     setUser(updatedUser);
-    localStorage.setItem('conversational-ai-user', JSON.stringify(updatedUser));
+    sessionStorage.setItem('conversational-ai-user', JSON.stringify(updatedUser));
 
     // Update user on server
     try {
@@ -86,7 +86,7 @@ export const useUser = () => {
       }
 
       setUser(data.data);
-      localStorage.setItem('conversational-ai-user', JSON.stringify(data.data));
+      sessionStorage.setItem('conversational-ai-user', JSON.stringify(data.data));
       toast.success('Profile updated successfully');
       
       return data.data;
@@ -112,7 +112,7 @@ export const useUser = () => {
     };
 
     setUser(updatedUser);
-    localStorage.setItem('conversational-ai-user', JSON.stringify(updatedUser));
+    sessionStorage.setItem('conversational-ai-user', JSON.stringify(updatedUser));
 
     // Update detected info on server
     try {
@@ -147,7 +147,7 @@ export const useUser = () => {
     };
 
     setUser(updatedUser);
-    localStorage.setItem('conversational-ai-user', JSON.stringify(updatedUser));
+    sessionStorage.setItem('conversational-ai-user', JSON.stringify(updatedUser));
 
     // Update conversation data on server
     try {
@@ -179,7 +179,7 @@ export const useUser = () => {
     };
 
     setUser(updatedUser);
-    localStorage.setItem('conversational-ai-user', JSON.stringify(updatedUser));
+    sessionStorage.setItem('conversational-ai-user', JSON.stringify(updatedUser));
 
     // Update onboarding status on server
     try {
@@ -202,7 +202,7 @@ export const useUser = () => {
   }, [user]);
 
   const resetUser = useCallback(() => {
-    localStorage.removeItem('conversational-ai-user');
+    sessionStorage.removeItem('conversational-ai-user');
     createNewUser();
   }, [createNewUser]);
 
