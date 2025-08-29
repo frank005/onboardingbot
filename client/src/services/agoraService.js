@@ -249,7 +249,10 @@ class AgoraService {
 
   // Subscribe to agent responses
   onAgentResponse(callback) {
-    this.conversationalAI.on('transcription-updated', callback);
+    console.log('🔗 Setting up onAgentResponse callback');
+    // Set up the event listener on the CovSubRenderController instance, not the main ConversationalAIAPI instance
+    this.conversationalAI.covSubRenderController.on('transcription-updated', callback);
+    console.log('🔗 Event listener registered for transcription-updated');
   }
 
   // Subscribe to user transcriptions

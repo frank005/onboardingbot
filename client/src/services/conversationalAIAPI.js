@@ -57,10 +57,12 @@ class EventHelper {
     }
 
     on(event, handler) {
+        console.log(`🔗 EventHelper.on: Registering handler for event: ${event}`);
         if (!this.eventListeners.has(event)) {
             this.eventListeners.set(event, []);
         }
         this.eventListeners.get(event).push(handler);
+        console.log(`🔗 Total handlers for ${event}: ${this.eventListeners.get(event).length}`);
     }
 
     off(event, handler) {
@@ -74,8 +76,10 @@ class EventHelper {
     }
 
     emit(event, ...args) {
+        console.log(`📡 EventHelper.emit: ${event} with ${args.length} arguments`);
         if (this.eventListeners.has(event)) {
             const handlers = this.eventListeners.get(event);
+            console.log(`📡 Found ${handlers.length} handlers for event: ${event}`);
             handlers.forEach(handler => {
                 try {
                     handler(...args);
@@ -83,6 +87,8 @@ class EventHelper {
                     console.error(`Error in event handler for ${event}:`, error);
                 }
             });
+        } else {
+            console.log(`📡 No handlers found for event: ${event}`);
         }
     }
 
@@ -94,8 +100,9 @@ class EventHelper {
 /**
  * Simple SubRender Controller for handling subtitle messages
  */
-class CovSubRenderController {
+class CovSubRenderController extends EventHelper {
     constructor(options = {}) {
+        super(); // Call parent constructor
         console.log('CovSubRenderController v1.1 loaded - improved duplicate detection');
         
         this.mode = options.mode || ESubtitleHelperMode.UNKNOWN;
@@ -276,18 +283,21 @@ class CovSubRenderController {
             }
         };
 
-        // Add to chat history if it's a final transcription
+        // Always update chat history for both final and non-final transcriptions
+        // This ensures we see live updates as the agent speaks
+        const currentChatHistory = [...this.chatHistory];
+        
         if (transcriptionData.transcription.isFinal) {
-            // Check if we already have this exact message in chat history to prevent duplicates
-            const existingMessage = this.chatHistory.find(item => 
+            // For final transcriptions, check if we already have this exact message
+            const existingMessage = currentChatHistory.find(item => 
                 item.data && 
-                item.data.messageId === messageId && // Use messageId for exact matching
+                item.data.text === transcriptionData.transcription.text &&
                 item.data.speaker === transcriptionData.transcription.speaker &&
-                item.data.turnId === transcriptionData.transcription.turnId
+                !item.id.toString().startsWith('temp-')
             );
             
             if (!existingMessage) {
-                this.chatHistory.push({
+                currentChatHistory.push({
                     id: Date.now() + Math.random(),
                     timestamp: transcriptionData.transcription.timestamp,
                     agentUserId: transcriptionData.agentUserId,
@@ -296,17 +306,13 @@ class CovSubRenderController {
             } else {
                 console.log('Skipping duplicate final message in chat history:', transcriptionData.transcription.text.substring(0, 50) + '...');
             }
-        }
-
-        // Always notify about transcription update (both final and non-final)
-        // Create a temporary array with the current item for live updates
-        const currentChatHistory = [...this.chatHistory];
-        
-        if (!transcriptionData.transcription.isFinal) {
-            // For non-final transcriptions, check if we have a previous non-final from same speaker
+        } else {
+            // For non-final transcriptions, update or add temporary item
             const tempId = `temp-${transcriptionData.agentUserId}`;
             const existingTempIndex = currentChatHistory.findIndex(item => 
-                item.id === tempId || (item.id && item.id.toString().startsWith('temp-') && item.agentUserId === transcriptionData.agentUserId)
+                item.id === tempId || 
+                (item.id && item.id.toString().startsWith('temp-') && 
+                 item.agentUserId === transcriptionData.agentUserId)
             );
             
             const tempItem = {
@@ -334,10 +340,8 @@ class CovSubRenderController {
             this.onTranscriptionUpdate(transcriptionData);
         }
         
-        // Also notify about chat history updates
-        if (this.onAgentResponse) {
-            this.onAgentResponse(this.chatHistory);
-        }
+        // Emit the transcription-updated event for proper event handling
+        this.emit(EConversationalAIAPIEvents.TRANSCRIPTION_UPDATED, this.chatHistory);
     }
 
     // Helper method to remove duplicate messages from chat history
@@ -847,9 +851,11 @@ class ConversationalAIAPI extends EventHelper {
 
     // Event callback methods
     onChatHistoryUpdated(chatHistory) {
+        console.log('📡 onChatHistoryUpdated called with', chatHistory?.length || 0, 'messages');
         if (this.enableLog) {
             console.log('Chat history updated:', chatHistory);
         }
+        console.log('📡 Emitting TRANSCRIPTION_UPDATED event with', chatHistory.length, 'messages');
         this.emit(EConversationalAIAPIEvents.TRANSCRIPTION_UPDATED, chatHistory);
     }
 

@@ -114,6 +114,13 @@ const ConversationInterface = ({
         setAgoraAgentId(response.agoraAgentId);
         console.log('✅ Using Agora ConvoAI:', response.agoraAgentId);
         
+        // For Agora, initialize conversation without initial message to prevent duplicates
+        setConversation(prev => ({
+          id: response.conversationId || `conversation-${Date.now()}`,
+          messages: [],
+          createdAt: new Date().toISOString()
+        }));
+        
         // Connect to Agora RTM channel
         try {
           await connectToAgoraRTM(response.agoraAgentId, userId);
@@ -163,12 +170,10 @@ const ConversationInterface = ({
       await agoraService.setMicrophoneEnabled(false);
       setUseAgora(false);
       
-      // Subscribe to RTM messages using ConversationalAIAPI
-      await agoraService.conversationalAI.subscribeMessage(channelName);
-      
-      // Subscribe to transcription updates (both user and assistant)
+      // Subscribe to transcription updates (both user and assistant) BEFORE subscribing to messages
       agoraService.onAgentResponse((chatHistory) => {
-        console.log('🎤 Transcription update via RTM:', chatHistory);
+        console.log('🎤 Transcription update via RTM callback triggered with', chatHistory?.length || 0, 'messages');
+        console.log('🎤 Full chatHistory:', chatHistory);
         
         if (chatHistory && chatHistory.length > 0) {
           const latestMessage = chatHistory[chatHistory.length - 1];
@@ -199,8 +204,8 @@ const ConversationInterface = ({
                 timestamp: new Date().toLocaleTimeString(),
                 source: 'agora-rtm',
                 isFinal: latestMessage.data.isFinal || latestMessage.data.final || false,
-                turnId: latestMessage.data.turn_id || latestMessage.data.turnId || '',
-                speaker: latestMessage.data.speaker || '',
+                speaker: latestMessage.data.speaker,
+                turnId: latestMessage.data.turn_id || latestMessage.data.turnId,
                 messageId: latestMessage.data.messageId || latestMessage.data.message_id || '',
                 isTemp: !(latestMessage.data.isFinal || latestMessage.data.final)
               };
@@ -215,30 +220,47 @@ const ConversationInterface = ({
                   };
                 }
                 
-                // Check for duplicates based on messageId (most reliable) or turnId + speaker + content
+                // Check for duplicates - prevent exact duplicates for final messages and user messages
                 const isDuplicate = prev.messages.some(m => 
                   (m.messageId && m.messageId === message.messageId) || // Exact messageId match
-                  (m.turnId === message.turnId && 
-                   m.speaker === message.speaker && 
+                  (message.isFinal && 
                    m.content === message.content &&
+                   m.speaker === message.speaker &&
                    m.source === 'agora-rtm' &&
-                   m.isFinal === message.isFinal) // Only consider exact content matches as duplicates
+                   m.isFinal) || // Only prevent duplicates for final messages with same content
+                  (message.role === 'user' && 
+                   m.content === message.content &&
+                   m.speaker === message.speaker &&
+                   m.source === 'agora-rtm') || // Prevent duplicate user messages
+                  (message.role === 'assistant' && 
+                   message.isFinal &&
+                   m.content === message.content &&
+                   m.speaker === message.speaker &&
+                   m.source === 'agora-rtm' &&
+                   m.isFinal) // Prevent duplicate final assistant messages
                 );
                 
                 if (isDuplicate) {
-                  console.log('🔄 Skipping duplicate message:', message.content);
+                  console.log('🔄 Skipping duplicate message:', message.content.substring(0, 50) + '...', 'turnId:', message.turnId, 'messageId:', message.messageId);
                   return prev;
                 }
                 
-                // For agent messages, replace the last non-final message from the same speaker
+                // For non-final assistant messages, replace the last non-final message from the same speaker and turn
                 if (!message.isFinal && message.role === 'assistant') {
                   const lastMessageIndex = prev.messages.length - 1;
                   const lastMessage = prev.messages[lastMessageIndex];
                   
-                  if (lastMessage && lastMessage.role === 'assistant' && !lastMessage.isFinal) {
-                    // Replace the last non-final assistant message
+                  if (lastMessage && 
+                      lastMessage.role === 'assistant' && 
+                      !lastMessage.isFinal && 
+                      lastMessage.turnId === message.turnId) {
+                    // Replace the last non-final assistant message from the same turn
                     const updatedMessages = [...prev.messages];
-                    updatedMessages[lastMessageIndex] = message;
+                    updatedMessages[lastMessageIndex] = {
+                      ...message,
+                      timestamp: '(live)',
+                      isTemp: true
+                    };
                     return {
                       ...prev,
                       messages: updatedMessages
@@ -246,6 +268,69 @@ const ConversationInterface = ({
                   }
                 }
                 
+                // For final assistant messages, replace any existing non-final message from the same turn
+                if (message.isFinal && message.role === 'assistant') {
+                  const existingMessageIndex = prev.messages.findIndex(m => 
+                    m.role === 'assistant' && 
+                    !m.isFinal && 
+                    m.turnId === message.turnId
+                  );
+                  
+                  if (existingMessageIndex >= 0) {
+                    // Replace the non-final message with the final one
+                    const updatedMessages = [...prev.messages];
+                    updatedMessages[existingMessageIndex] = {
+                      ...message,
+                      timestamp: new Date().toLocaleTimeString(),
+                      isTemp: false
+                    };
+                    return {
+                      ...prev,
+                      messages: updatedMessages
+                    };
+                  }
+                }
+                
+                // For final messages, always add them
+                if (message.isFinal) {
+                  console.log('✅ Adding final message to conversation:', message.content.substring(0, 50) + '...');
+                  return {
+                    ...prev,
+                    messages: [...prev.messages, message]
+                  };
+                } else {
+                  // For non-final messages, update existing temp message or add new one
+                  const tempMessageId = `temp-${message.speaker}`;
+                  const existingTempIndex = prev.messages.findIndex(m => 
+                    m.id === tempMessageId || 
+                    (m.id && m.id.toString().startsWith('temp-') && m.speaker === message.speaker)
+                  );
+                  
+                  const tempMessage = {
+                    ...message,
+                    id: tempMessageId,
+                    timestamp: '(live)',
+                    isTemp: true
+                  };
+                  
+                  if (existingTempIndex >= 0) {
+                    // Replace existing temp message
+                    const newMessages = [...prev.messages];
+                    newMessages[existingTempIndex] = tempMessage;
+                    return {
+                      ...prev,
+                      messages: newMessages
+                    };
+                  } else {
+                    // Add new temp message
+                    return {
+                      ...prev,
+                      messages: [...prev.messages, tempMessage]
+                    };
+                  }
+                }
+                
+                // For non-final messages, add them if they're not replacing an existing one
                 return {
                   ...prev,
                   messages: [...prev.messages, message]
@@ -255,6 +340,9 @@ const ConversationInterface = ({
           }
         }
       });
+      
+      // Subscribe to RTM messages using ConversationalAIAPI AFTER setting up the callback
+      await agoraService.conversationalAI.subscribeMessage(channelName);
       
       setAgoraConnected(true);
       setAgoraChannelName(channelName);
@@ -315,39 +403,43 @@ const ConversationInterface = ({
     if (!text.trim()) return;
 
     // Immediately add the user's message to prevent overwriting
-    const userMessage = {
-      id: `user-${Date.now()}`,
-      role: 'user',
-      content: text.trim(),
-      timestamp: new Date().toLocaleTimeString(),
-      source: 'user-input',
-      isFinal: true,
-      speaker: 'User',
-      isTemp: false
-    };
-
-    setConversation(prev => {
-      if (!prev) {
-        return {
-          id: `conversation-${Date.now()}`,
-          messages: [userMessage],
-          createdAt: new Date().toISOString()
-        };
-      }
-      return {
-        ...prev,
-        messages: [...prev.messages, userMessage]
-      };
-    });
-
     // Route message based on connection status
     if (agoraConnected && agoraAgentId) {
       console.log('📤 Sending message via Agora RTM:', text);
       agoraService.sendMessageToAgent(text);
+      // Don't add message to conversation here - wait for RTM transcription
     } else {
       console.log('📤 Sending message via server:', text);
       onSendMessage(text);
+      // Add message to conversation for non-Agora mode only
+      const userMessage = {
+        id: `user-${Date.now()}`,
+        role: 'user',
+        content: text.trim(),
+        timestamp: new Date().toLocaleTimeString(),
+        source: 'user-input',
+        isFinal: true,
+        speaker: 'User',
+        isTemp: false
+      };
+
+      setConversation(prev => {
+        if (!prev) {
+          return {
+            id: `conversation-${Date.now()}`,
+            messages: [userMessage],
+            createdAt: new Date().toISOString()
+          };
+        }
+        return {
+          ...prev,
+          messages: [...prev.messages, userMessage]
+        };
+      });
     }
+
+    // Clear the message input after sending
+    setMessage('');
   };
 
   const handleSubmit = (e) => {
@@ -594,20 +686,23 @@ const ConversationInterface = ({
                 </button>
               </motion.div>
             ) : (
-              conversation?.messages?.map((msg, index) => (
-                <motion.div
-                  key={index}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.1 }}
-                >
-                  <MessageBubble
-                    message={msg}
-                    isUser={msg.role === 'user'}
-                    config={config}
-                  />
-                </motion.div>
-              ))
+              (() => {
+                console.log('🎯 Rendering conversation with', conversation?.messages?.length || 0, 'messages:', conversation?.messages);
+                return conversation?.messages?.map((msg, index) => (
+                  <motion.div
+                    key={index}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.1 }}
+                  >
+                    <MessageBubble
+                      message={msg}
+                      isUser={msg.role === 'user'}
+                      config={config}
+                    />
+                  </motion.div>
+                ));
+              })()
             )}
           </AnimatePresence>
           

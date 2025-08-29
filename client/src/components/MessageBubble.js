@@ -6,6 +6,9 @@ const MessageBubble = ({ message, isUser }) => {
   
   // Get the timestamp
   const timestamp = message.timestamp || new Date().toLocaleTimeString();
+  
+  // Check if this is a temporary message
+  const isTemp = message.isTemp || timestamp === '(live)';
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`}>
@@ -13,11 +16,13 @@ const MessageBubble = ({ message, isUser }) => {
         className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
           isUser 
             ? 'bg-blue-500 text-white' 
-            : 'bg-gray-200 text-gray-800'
+            : isTemp
+              ? 'bg-yellow-100 text-gray-800 border-2 border-yellow-300'
+              : 'bg-gray-200 text-gray-800'
         }`}
       >
         <div className="text-sm font-medium mb-1">
-          {speaker}
+          {speaker} {isTemp && <span className="text-yellow-600">(live)</span>}
         </div>
         <div className="text-sm">
           {message.content}
