@@ -1,97 +1,175 @@
 import { useState, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
+import clientUserService from '../services/clientUserService';
 
 export const useUser = () => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  const createNewUser = useCallback(() => {
+  const createNewUser = useCallback(async () => {
     const newUser = {
       id: `user_${Date.now()}`,
       createdAt: new Date().toISOString(),
       status: 'active',
       onboardingCompleted: false,
-      profile: {},
+      profile: {
+        name: 'Guest User',
+        birthday: 'Not provided',
+        bio: 'Not provided',
+        interests: 'Not provided',
+        experienceLevel: 'Not provided',
+        location: 'Not provided',
+        phone: 'Not provided',
+        email: 'Not provided',
+        website: 'Not provided',
+        socialHandles: []
+      },
       detectedInfo: {},
       conversationData: {}
     };
+    
+    // Create user in both sessionStorage and clientUserService
     setUser(newUser);
     sessionStorage.setItem('conversational-ai-user', JSON.stringify(newUser));
+    
+    try {
+      await clientUserService.createUser(newUser);
+      console.log('✅ User created in clientUserService:', newUser.id);
+    } catch (error) {
+      console.error('❌ Failed to create user in clientUserService:', error);
+    }
   }, []);
 
   useEffect(() => {
     // Load user from sessionStorage or create new user
-    const savedUser = sessionStorage.getItem('conversational-ai-user');
-    if (savedUser) {
-      try {
-        setUser(JSON.parse(savedUser));
-      } catch (error) {
-        console.error('Error parsing saved user:', error);
-        createNewUser();
+    const loadOrCreateUser = async () => {
+      const savedUser = sessionStorage.getItem('conversational-ai-user');
+      if (savedUser) {
+        try {
+          const parsedUser = JSON.parse(savedUser);
+          setUser(parsedUser);
+          
+          // Ensure user exists in clientUserService
+          try {
+            await clientUserService.updateUserProfile(parsedUser.id, parsedUser.profile || {});
+            console.log('✅ User synced with clientUserService:', parsedUser.id);
+          } catch (error) {
+            console.warn('⚠️ User not found in clientUserService, creating...');
+            await createNewUser();
+          }
+        } catch (error) {
+          console.error('Error parsing saved user:', error);
+          await createNewUser();
+        }
+      } else {
+        await createNewUser();
       }
-    } else {
-      createNewUser();
-    }
+    };
+    
+    loadOrCreateUser();
   }, [createNewUser]);
 
   const updateUser = useCallback(async (updates) => {
     if (!user) return;
 
+    console.log('🔄 updateUser called with:', updates);
+    console.log('🔄 Current user:', user);
+
+    // Ensure profile object exists
+    const currentProfile = user.profile || {};
+    
+    // Handle both direct profile updates and nested profile updates
+    let profileUpdates = updates;
+    if (updates.profile) {
+      // If updates.profile exists, merge it with current profile
+      profileUpdates = { ...currentProfile, ...updates.profile };
+      console.log('🔄 Merging nested profile updates:', { currentProfile, updates: updates.profile, result: profileUpdates });
+    } else {
+      // Otherwise, treat updates as direct profile updates
+      profileUpdates = { ...currentProfile, ...updates };
+      console.log('🔄 Merging direct profile updates:', { currentProfile, updates, result: profileUpdates });
+    }
+    
+    console.log('🔄 Current profile:', currentProfile);
+    console.log('🔄 Updates:', updates);
+    console.log('🔄 Profile updates:', profileUpdates);
+    
     const updatedUser = {
       ...user,
-      ...updates,
+      profile: profileUpdates,
       updatedAt: new Date().toISOString()
     };
 
     setUser(updatedUser);
     sessionStorage.setItem('conversational-ai-user', JSON.stringify(updatedUser));
 
-    // Update user on server
+    // Update user using client-side service
     try {
-      const response = await fetch(`/api/users/${user.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(updates),
-      });
-
-      const data = await response.json();
-      
-      if (!data.success) {
-        console.warn('Failed to update user on server:', data.error);
+      // First, try to get the user to see if they exist
+      const existingUser = await clientUserService.getUserById(user.id);
+      if (!existingUser) {
+        // User doesn't exist, create them first
+        console.log('🔄 User not found in clientUserService, creating first:', user.id);
+        await clientUserService.createUser(updatedUser);
+        console.log('✅ User created in clientUserService:', user.id);
       }
+      
+      // Now update the profile - pass profileUpdates directly, not wrapped in profile object
+      await clientUserService.updateUserProfile(user.id, profileUpdates);
+      console.log('✅ User profile updated in clientUserService:', user.id);
     } catch (error) {
-      console.error('Error updating user on server:', error);
+      console.error('❌ Error updating user profile:', error);
+      // If update still fails, try to recreate
+      try {
+        await clientUserService.createUser(updatedUser);
+        console.log('✅ User recreated in clientUserService:', user.id);
+      } catch (createError) {
+        console.error('❌ Failed to recreate user:', createError);
+      }
     }
   }, [user]);
 
   const updateProfile = useCallback(async (profileData) => {
     if (!user) return;
 
+    console.log('🔄 updateProfile called with:', profileData);
+    console.log('🔄 Current user:', user);
+
     setLoading(true);
     try {
-      const response = await fetch(`/api/users/${user.id}/profile`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(profileData),
-      });
-
-      const data = await response.json();
+      // Ensure profile object exists
+      const currentProfile = user.profile || {};
+      const updatedProfile = { ...currentProfile, ...profileData };
       
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to update profile');
+      console.log('🔄 Current profile:', currentProfile);
+      console.log('🔄 Profile data:', profileData);
+      console.log('🔄 Updated profile:', updatedProfile);
+      
+      // Ensure user exists in clientUserService before updating
+      try {
+        const existingUser = await clientUserService.getUserById(user.id);
+        if (!existingUser) {
+          // User doesn't exist, create them first
+          console.log('🔄 User not found in clientUserService, creating first:', user.id);
+          await clientUserService.createUser(user);
+          console.log('✅ User created in clientUserService:', user.id);
+        }
+      } catch (createError) {
+        console.error('❌ Failed to create user:', createError);
       }
-
-      setUser(data.data);
-      sessionStorage.setItem('conversational-ai-user', JSON.stringify(data.data));
+      
+      // Update profile using client-side service
+      const updatedUser = await clientUserService.updateUserProfile(user.id, updatedProfile);
+      
+      // Update local state
+      const newUser = { ...user, profile: updatedProfile };
+      setUser(newUser);
+      sessionStorage.setItem('conversational-ai-user', JSON.stringify(newUser));
       toast.success('Profile updated successfully');
       
-      return data.data;
+      return updatedUser;
     } catch (error) {
-      console.error('Error updating profile:', error);
+      console.error('❌ Error updating profile:', error);
       toast.error('Failed to update profile');
       throw error;
     } finally {

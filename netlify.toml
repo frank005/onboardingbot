@@ -1,0 +1,47 @@
+[build]
+  # Build the React app in /client
+  command = "cd client && npm install && npm run build"
+  publish = "client/build"
+  functions = "netlify/functions"
+
+[build.environment]
+  NODE_VERSION = "18"
+
+# --- API redirects FIRST (explicit mappings) ---
+[[redirects]]
+  from = "/api/agora/agents"
+  to   = "/.netlify/functions/agora-agents"
+  status = 200
+
+[[redirects]]
+  from = "/api/agora/agents/chat"
+  to   = "/.netlify/functions/agora-agents-chat"
+  status = 200
+
+[[redirects]]
+  from = "/api/agora/agents/interrupt"
+  to   = "/.netlify/functions/agora-agents-interrupt"
+  status = 200
+
+[[redirects]]
+  from = "/api/agora/agents/stop"
+  to   = "/.netlify/functions/agora-agents-stop"
+  status = 200
+
+# --- SPA catch-all LAST ---
+[[redirects]]
+  from = "/*"
+  to   = "/index.html"
+  status = 200
+
+[functions]
+  node_bundler = "esbuild"
+  external_node_modules = []
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"

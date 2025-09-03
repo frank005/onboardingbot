@@ -21,7 +21,7 @@ function App() {
     // Load configuration using the client config service
     const loadConfig = async () => {
       try {
-        const data = await clientConfigService.loadConfig();
+        const data = await clientConfigService.getConfig();
         setConfig(data);
         
         // Validate configuration

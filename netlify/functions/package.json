@@ -1,0 +1,16 @@
+{
+  "name": "agora-convo-ai-netlify-functions",
+  "version": "1.0.0",
+  "description": "Netlify Functions for Agora Convo AI",
+  "main": "index.js",
+  "dependencies": {
+    "axios": "^1.6.0"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": ["agora", "ai", "netlify", "functions", "serverless"],
+  "author": "",
+  "license": "ISC"
+}

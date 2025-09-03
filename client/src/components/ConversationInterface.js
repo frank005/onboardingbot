@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Send, Volume2, VolumeX, User, Bot, Database, Mic, MicOff, Camera, Square } from 'lucide-react';
 import toast from 'react-hot-toast';
-import io from 'socket.io-client';
+
 import MessageBubble from './MessageBubble';
 import VoiceRecorder from './VoiceRecorder';
 import UserProfileCard from './UserProfileCard';
@@ -11,6 +11,13 @@ import agoraService from '../services/agoraService';
 import SubtitleDisplay from './SubtitleDisplay';
 import AgoraSetup from './AgoraSetup';
 import CameraPreview from './CameraPreview';
+import { 
+  createProfileStore, 
+  wireConvoToProfile, 
+  cleanAssistantMessage,
+  getExpectedField,
+  parseProfileUpdate
+} from '../utils/profile-sync';
 
 const ConversationInterface = ({ 
   config, 
@@ -25,11 +32,12 @@ const ConversationInterface = ({
   setConversation
 }) => {
   const [message, setMessage] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
+  // isTyping state removed - no longer used
   const [isRecording, setIsRecording] = useState(false);
   const [isVoiceEnabled, setIsVoiceEnabled] = useState(true);
   const [showProfile, setShowProfile] = useState(false);
   const [profileUpdates, setProfileUpdates] = useState([]);
+  const [profileStoreVersion, setProfileStoreVersion] = useState(0); // Force re-renders when profile updates
   const [useAgora, setUseAgora] = useState(false);
   const [agoraAgentId, setAgoraAgentId] = useState(null);
   const [agoraChannelName, setAgoraChannelName] = useState(null);
@@ -41,10 +49,24 @@ const ConversationInterface = ({
   const [cameraPosition, setCameraPosition] = useState({ x: 20, y: 20 });
   const [userTranscription, setUserTranscription] = useState(null);
   const [audioEnabled, setAudioEnabled] = useState(true);
+
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
-  const socketRef = useRef(null);
+
+
   const processedMessages = useRef(new Set()); // Track processed messages to prevent duplicates
+  
+  // Profile store for client-side profile extraction
+  const profileStore = useRef(null);
+  const profileUnsubscribe = useRef(null);
+  
+  // Initialize profile store on component mount
+  useEffect(() => {
+    if (!profileStore.current) {
+      profileStore.current = createProfileStore();
+      console.log('🔍 Profile store initialized on component mount');
+    }
+  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -70,6 +92,16 @@ const ConversationInterface = ({
         console.log('🔄 Disconnecting Agora clients on component unmount');
         agoraService.disconnect();
       }
+      
+      // Cleanup profile store
+      if (profileUnsubscribe.current) {
+        profileUnsubscribe.current();
+        profileUnsubscribe.current = null;
+      }
+      if (profileStore.current) {
+        profileStore.current.reset();
+        profileStore.current = null;
+      }
     };
   }, [agoraConnected]);
 
@@ -81,62 +113,12 @@ const ConversationInterface = ({
     }
   }, [agoraConnected]);
 
-  // Socket.IO connection for profile updates
+  // Direct profile updates (no more Socket.IO)
   useEffect(() => {
     if (user?.id) {
-      // Connect to Socket.IO server
-      socketRef.current = io();
-      
-      // Join user room for profile updates
-      socketRef.current.emit('join-user-room', { userId: user.id });
-      
-      // Listen for profile updates
-      socketRef.current.on('profile-updated', (update) => {
-        console.log('📝 Received profile update:', update);
-        
-        // Add to profile updates list
-        // Only add if we don't already have this exact update
-        const newUpdate = {
-          field: Object.keys(update.data)[0],
-          value: Object.values(update.data)[0],
-          type: update.type,
-          timestamp: update.timestamp
-        };
-        
-        setProfileUpdates(prev => {
-          // Check if we already have this exact update
-          const exists = prev.some(existing => 
-            existing.field === newUpdate.field && 
-            existing.value === newUpdate.value &&
-            existing.type === newUpdate.type
-          );
-          
-          if (!exists) {
-            return [...prev, newUpdate];
-          }
-          return prev;
-        });
-        
-        // Update user data
-        if (update.type === 'profile') {
-          onUserUpdate({ profile: { ...user.profile, ...update.data } });
-        } else if (update.type === 'detected-info') {
-          onUserUpdate({ detectedInfo: { ...user.detectedInfo, ...update.data } });
-        }
-        
-        // Show toast notification
-        const fieldName = Object.keys(update.data)[0].replace(/_/g, ' ');
-        toast.success(`Updated ${fieldName}: ${Object.values(update.data)[0]}`);
-      });
-      
-      // Cleanup on unmount
-      return () => {
-        if (socketRef.current) {
-          socketRef.current.disconnect();
-        }
-      };
+      console.log('🔍 User ID available for profile updates:', user.id);
     }
-  }, [user?.id, onUserUpdate, user?.profile, user?.detectedInfo]);
+  }, [user?.id]);
 
   // Handle camera image capture
   const handleImageCapture = async (imageData) => {
@@ -161,44 +143,64 @@ const ConversationInterface = ({
     try {
       const userId = user?.id || `user_${Date.now()}`;
       
-      // Start conversation (server will try Agora first, fallback to OpenAI)
-      const response = await onStartConversation(userId);
+      console.log('🔍 Starting conversation with userId:', userId);
       
-      console.log('🔍 Server response:', response);
-      console.log('🔍 useAgora:', response?.useAgora);
-      console.log('🔍 agoraAgentId:', response?.agoraAgentId);
+      // Always use Agora for now - no server fallback
+      setUseAgora(true);
       
-      // Update local state based on server response
-      if (response?.useAgora && response?.agoraAgentId) {
-        setUseAgora(true);
-        setAgoraAgentId(response.agoraAgentId);
-        console.log('✅ Using Agora ConvoAI:', response.agoraAgentId);
+      // Initialize conversation with active status
+      setConversation(prev => ({
+        id: `conversation-${Date.now()}`,
+        messages: [],
+        status: 'active',
+        createdAt: new Date().toISOString(),
+        completedTopics: [],
+        currentTopic: 'platform_overview',
+        provider: 'agora'
+      }));
+      
+      // Connect to Agora RTM channel directly
+      try {
+        await connectToAgoraRTM(null, userId); // agentId will be created in connectToAgoraRTM
+        console.log('✅ Connected to Agora RTM channel');
         
-        // For Agora, initialize conversation without initial message to prevent duplicates
-        setConversation(prev => ({
-          id: response.conversationId || `conversation-${Date.now()}`,
-          messages: [],
-          createdAt: new Date().toISOString(),
-          completedTopics: response.completedTopics || [],
-          currentTopic: response.currentTopic || 'platform_overview',
-          provider: response.provider
-        }));
-        
-        // Connect to Agora RTM channel
-        try {
-          await connectToAgoraRTM(response.agoraAgentId, userId);
-          console.log('✅ Connected to Agora RTM channel');
-        } catch (rtmError) {
-          console.warn('⚠️ Failed to connect to Agora RTM:', rtmError);
-          // Continue with conversation even if RTM fails
+        // Profile store should already be created in connectToAgoraRTM
+        if (!profileStore.current) {
+          console.warn('⚠️ Profile store not found, creating now');
+          profileStore.current = createProfileStore();
         }
-      } else {
-        setUseAgora(false);
-        console.log('✅ Using OpenAI');
+        
+        // Wire the profile store to the conversation
+        if (profileUnsubscribe.current) {
+          profileUnsubscribe.current();
+        }
+        
+        profileUnsubscribe.current = wireConvoToProfile(agoraService, (profile, update) => {
+          console.log('📝 Profile updated:', update);
+          console.log('📝 Current profile:', profile);
+          
+          // Update local state for UI
+          setProfileUpdates(prev => [...prev, update]);
+          
+          // Update user profile if available
+          if (onUserUpdate && user?.id) {
+            onUserUpdate({
+              ...user,
+              profile: profile
+            });
+          }
+        });
+        
+        console.log('🔍 Profile store wired to agoraService');
+      } catch (rtmError) {
+        console.warn('⚠️ Failed to connect to Agora RTM:', rtmError);
+        toast.error('Failed to connect to Agora RTM');
+        return;
       }
       
       toast.success('Conversation started!');
     } catch (error) {
+      console.error('Error starting conversation:', error);
       toast.error('Failed to start conversation');
     }
   };
@@ -208,9 +210,16 @@ const ConversationInterface = ({
     try {
       console.log('🔗 Connecting to Agora RTM...');
       
+      // Initialize profile store early if not exists
+      if (!profileStore.current) {
+        profileStore.current = createProfileStore();
+        console.log('🔍 Profile store created in connectToAgoraRTM');
+      }
+      
+      console.log('🔍 Profile store state before connection:', profileStore.current ? 'exists' : 'null');
+      
       const appId = window.REACT_APP_AGORA_APP_ID || process.env.REACT_APP_AGORA_APP_ID || 'your_agora_app_id';
       const clientUid = Math.floor(Math.random() * 10000);
-      // Use the same channel name as the server
       const channelName = window.REACT_APP_AGORA_CHANNEL || process.env.REACT_APP_AGORA_CHANNEL || "onboarding_channel";
       
       console.log('🔍 Environment variable REACT_APP_AGORA_APP_ID:', window.REACT_APP_AGORA_APP_ID || process.env.REACT_APP_AGORA_APP_ID);
@@ -231,12 +240,33 @@ const ConversationInterface = ({
       
       // Initialize microphone as muted by default
       await agoraService.setMicrophoneEnabled(false);
-      setUseAgora(false);
+      
+      // Create Agora agent if not provided
+      let finalAgentId = agentId;
+      if (!finalAgentId) {
+        try {
+          const prompt = agoraService.generateOnboardingPrompt('platform_overview', []);
+          console.log('🔗 Creating Agora agent via REST API...');
+          const agent = await agoraService.createAgent(channelName, 8888, clientUid, prompt);
+          if (agent && agent.agentId) {
+            finalAgentId = agent.agentId;
+            setAgoraAgentId(finalAgentId);
+            console.log('✅ Created Agora agent via REST API:', finalAgentId);
+          } else {
+            throw new Error('Failed to create Agora agent');
+          }
+        } catch (agentError) {
+          console.error('❌ Error creating Agora agent:', agentError);
+          throw agentError;
+        }
+      }
       
       // Subscribe to transcription updates (both user and assistant) BEFORE subscribing to messages
-      agoraService.onAgentResponse(async (chatHistory) => {
-        console.log('🎤 Transcription update via RTM callback triggered with', chatHistory?.length || 0, 'messages');
-        console.log('🎤 Full chatHistory:', chatHistory);
+      // Use the original working event system instead of the callback
+      agoraService.conversationalAI.covSubRenderController.on('transcription-updated', async (chatHistory) => {
+        try {
+          console.log('🎤 TRANSCRIPTION_UPDATED event received with', chatHistory?.length || 0, 'messages');
+          console.log('🎤 Full chatHistory:', chatHistory);
         
         if (chatHistory && chatHistory.length > 0) {
           const latestMessage = chatHistory[chatHistory.length - 1];
@@ -255,8 +285,37 @@ const ConversationInterface = ({
             if (!fullText) return;
             
             // Determine if this is a user or assistant message based on the speaker
-            const isUserMessage = latestMessage.data.speaker && latestMessage.data.speaker.toLowerCase().includes('user');
-            const isAssistantMessage = latestMessage.data.speaker && latestMessage.data.speaker.toLowerCase().includes('assistant');
+            const isUserMessage = latestMessage.data.speaker && (
+              latestMessage.data.speaker.toLowerCase().includes('user') || 
+              latestMessage.data.speaker.toLowerCase().includes('user (') ||
+              latestMessage.data.speaker.toLowerCase().includes('user(') ||
+              latestMessage.data.speaker.toLowerCase().includes('user ') ||
+              latestMessage.data.speaker.toLowerCase().startsWith('user')
+            );
+            const isAssistantMessage = latestMessage.data.speaker && (
+              latestMessage.data.speaker.toLowerCase().includes('assistant') || 
+              latestMessage.data.speaker.toLowerCase().includes('assistant (')
+            );
+            
+            // Debug logging for speaker detection
+            console.log('🔍 Speaker detection debug:', {
+              speaker: latestMessage.data.speaker,
+              speakerLower: latestMessage.data.speaker?.toLowerCase(),
+              isUserMessage,
+              isAssistantMessage,
+              includesUser: latestMessage.data.speaker?.toLowerCase().includes('user'),
+              includesUserParen: latestMessage.data.speaker?.toLowerCase().includes('user (')
+            });
+            
+            // Debug logging for message processing
+            console.log('🔍 Message processing debug:', {
+              speaker: latestMessage.data.speaker,
+              isUserMessage,
+              isAssistantMessage,
+              fullText: fullText.substring(0, 50) + '...',
+              isFinal: latestMessage.data.isFinal || latestMessage.data.final,
+              userExists: !!user?.id
+            });
             
             // Process all messages (both final and non-final) like the demo
             if (isUserMessage || isAssistantMessage) {
@@ -273,43 +332,76 @@ const ConversationInterface = ({
                 isTemp: !(latestMessage.data.isFinal || latestMessage.data.final)
               };
               
-              // Process user messages for profile extraction (only once per unique message)
-              if (isUserMessage && message.isFinal && user?.id) {
-                // Check if we've already processed this exact message
-                const messageKey = `${user.id}-${fullText}`;
-                if (!processedMessages.current.has(messageKey)) {
-                  processedMessages.current.add(messageKey);
-                  console.log('🔍 Processing user message for profile extraction:', fullText);
-                  try {
-                    // Send message to server for profile extraction
-                    const response = await fetch('/api/conversation/message', {
-                      method: 'POST',
-                      headers: {
-                        'Content-Type': 'application/json',
-                      },
-                      body: JSON.stringify({
-                        userId: user.id,
-                        message: fullText,
-                        conversationId: conversation?.id
-                      }),
-                    });
-                    
-                    if (response.ok) {
-                      console.log('✅ Profile extraction request sent for:', fullText);
-                    } else {
-                      console.warn('⚠️ Failed to send profile extraction request');
-                    }
-                  } catch (error) {
-                    console.error('❌ Error sending profile extraction request:', error);
+
+              
+              // Profile extraction using the new profile-sync system
+              if (isAssistantMessage && message.isFinal) {
+                try {
+                  // Ensure profile store exists
+                  if (!profileStore.current) {
+                    console.warn('⚠️ Profile store not found, creating now');
+                    profileStore.current = createProfileStore();
                   }
-                } else {
-                  console.log('🔄 Skipping already processed message:', fullText);
+                  
+                  // Get expected field from profile store
+                  const expectedField = profileStore.current.getExpectedField();
+                  
+                  console.log('🔍 Expected field for parsing:', expectedField);
+                  console.log('🔍 Current profile state:', profileStore.current.getProfile());
+                  
+                  const parsed = parseProfileUpdate(fullText, expectedField);
+                  
+                  if (parsed && parsed.fieldName && parsed.value) {
+                    console.log('🔍 Profile update detected:', parsed);
+                    
+                    // Update the profile store with sequence number
+                    profileStore.current.assistantSeq++;
+                    const updated = profileStore.current.updateField(
+                      parsed.fieldName, 
+                      parsed.value, 
+                      profileStore.current.assistantSeq
+                    );
+                    
+                    if (updated) {
+                      console.log('✅ Profile updated:', parsed.fieldName, '=', parsed.value);
+                      
+                      // Force a re-render to update the UI
+                      setProfileUpdates(prev => [...prev, {
+                        field: parsed.fieldName,
+                        value: parsed.value,
+                        timestamp: Date.now(),
+                        type: 'detected-info'
+                      }]);
+                      
+                      // Also update the user profile to sync with profile store
+                      if (onUserUpdate && user?.id) {
+                        const currentProfile = profileStore.current.getProfile();
+                        onUserUpdate({
+                          ...user,
+                          profile: currentProfile
+                        });
+                      }
+                      
+                      // Force UI re-render by incrementing profile store version
+                      setProfileStoreVersion(prev => prev + 1);
+                    }
+                  } else {
+                    console.log('🔍 No valid profile update parsed from:', fullText.substring(0, 100));
+                  }
+                } catch (error) {
+                  console.error('❌ Error parsing profile update:', error);
+                  // Don't let profile parsing errors break the conversation
                 }
               }
               
               // Update conversation state with proper deduplication
               setConversation(prev => {
+                try {
+                  console.log('🔄 Updating conversation state. Previous messages:', prev?.messages?.length || 0);
+                  console.log('🔄 New message to add:', message);
+                
                 if (!prev) {
+                  console.log('🔄 Creating new conversation with message');
                   return {
                     id: `conversation-${Date.now()}`,
                     messages: [message],
@@ -329,8 +421,9 @@ const ConversationInterface = ({
                    m.isFinal) || // Only prevent duplicates for final messages with same content
                   (message.role === 'user' && 
                    m.content === message.content &&
-                   m.speaker === message.speaker &&
-                   m.source === 'agora-rtm') || // Prevent duplicate user messages
+                   (Math.abs(new Date(m.timestamp) - new Date()) < 10000 || 
+                    m.source === 'agora-rtm' || 
+                    m.speaker?.toLowerCase().includes('user'))) || // Prevent duplicate user messages within 10 seconds OR from RTM OR if previous message is from user
                   (message.role === 'assistant' && 
                    message.isFinal &&
                    m.content === message.content &&
@@ -343,6 +436,8 @@ const ConversationInterface = ({
                   console.log('🔄 Skipping duplicate message:', message.content.substring(0, 50) + '...', 'turnId:', message.turnId, 'messageId:', message.messageId);
                   return prev;
                 }
+                
+                console.log('🔄 Adding new message to conversation. Total messages will be:', prev.messages.length + 1);
                 
                 // For non-final assistant messages, replace the last non-final message from the same speaker and turn
                 if (!message.isFinal && message.role === 'assistant') {
@@ -393,6 +488,9 @@ const ConversationInterface = ({
                 // For final messages, always add them
                 if (message.isFinal) {
                   console.log('✅ Adding final message to conversation:', message.content.substring(0, 50) + '...');
+                  
+
+                  
                   return {
                     ...prev,
                     messages: [...prev.messages, message]
@@ -434,14 +532,34 @@ const ConversationInterface = ({
                   ...prev,
                   messages: [...prev.messages, message]
                 };
+                } catch (error) {
+                  console.error('❌ Error updating conversation state:', error);
+                  // Return previous state to prevent crash
+                  return prev || {
+                    id: `conversation-${Date.now()}`,
+                    messages: [],
+                    createdAt: new Date().toISOString(),
+                    completedTopics: [],
+                    currentTopic: 'platform_overview'
+                  };
+                }
               });
             }
           }
+        }
+        } catch (error) {
+          console.error('❌ Error in transcription event handler:', error);
+          // Don't let transcription errors break the conversation
         }
       });
       
       // Subscribe to RTM messages using ConversationalAIAPI AFTER setting up the callback
       await agoraService.conversationalAI.subscribeMessage(channelName);
+      
+      // Add additional debugging for RTM message handling
+      console.log('🔍 RTM subscription completed for channel:', channelName);
+      console.log('🔍 onAgentResponse callback is set:', !!agoraService.onAgentResponse);
+      console.log('🔍 Waiting for agent responses...');
       
       setAgoraConnected(true);
       setAgoraChannelName(channelName);
@@ -501,40 +619,41 @@ const ConversationInterface = ({
   const handleSendMessage = (text) => {
     if (!text.trim()) return;
 
-    // Immediately add the user's message to prevent overwriting
-    // Route message based on connection status
+    // Create user message
+    const userMessage = {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      content: text.trim(),
+      timestamp: new Date().toLocaleTimeString(),
+      source: 'user-input',
+      isFinal: true,
+      speaker: 'User',
+      isTemp: false
+    };
+
+    // Add user message to conversation immediately
+    setConversation(prev => {
+      if (!prev) {
+        return {
+          id: `conversation-${Date.now()}`,
+          messages: [userMessage],
+          createdAt: new Date().toISOString(),
+          completedTopics: [],
+          currentTopic: 'platform_overview'
+        };
+      }
+      return {
+        ...prev,
+        messages: [...prev.messages, userMessage]
+      };
+    });
+
+    // Send via Agora RTM if connected
     if (agoraConnected && agoraAgentId) {
       console.log('📤 Sending message via Agora RTM:', text);
       agoraService.sendMessageToAgent(text);
-      // Don't add message to conversation here - wait for RTM transcription
     } else {
-      console.log('📤 Sending message via server:', text);
-      onSendMessage(text);
-      // Add message to conversation for non-Agora mode only
-      const userMessage = {
-        id: `user-${Date.now()}`,
-        role: 'user',
-        content: text.trim(),
-        timestamp: new Date().toLocaleTimeString(),
-        source: 'user-input',
-        isFinal: true,
-        speaker: 'User',
-        isTemp: false
-      };
-
-      setConversation(prev => {
-        if (!prev) {
-          return {
-            id: `conversation-${Date.now()}`,
-            messages: [userMessage],
-            createdAt: new Date().toISOString()
-          };
-        }
-        return {
-          ...prev,
-          messages: [...prev.messages, userMessage]
-        };
-      });
+      console.log('📤 No Agora connection available');
     }
 
     // Clear the message input after sending
@@ -654,6 +773,25 @@ const ConversationInterface = ({
             >
               <User className="w-5 h-5" />
             </button>
+            
+            {/* Debug: Show current profile state (hidden in production) */}
+            {process.env.NODE_ENV === 'development' && profileStore.current && (
+              <div className="text-xs text-gray-600 bg-gray-100 p-2 rounded">
+                <div>Profile Store Active</div>
+                <div>Fields: {(() => {
+                  try {
+                    if (!profileStore.current || typeof profileStore.current.getProfile !== 'function') {
+                      return 'Profile store not ready';
+                    }
+                    const profile = profileStore.current.getProfile();
+                    return Object.keys(profile || {}).join(', ') || 'None';
+                  } catch (error) {
+                    console.error('❌ Error getting profile:', error);
+                    return 'Error';
+                  }
+                })()}</div>
+              </div>
+            )}
             
             <button
               onClick={() => setProfileUpdates([])}
@@ -803,23 +941,6 @@ const ConversationInterface = ({
             )}
           </AnimatePresence>
           
-          {isTyping && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="flex items-center space-x-2 p-3"
-            >
-              <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center">
-                <Bot className="w-4 h-4 text-gray-600" />
-              </div>
-              <div className="typing-indicator">
-                <div className="typing-dot"></div>
-                <div className="typing-dot" style={{ animationDelay: '0.1s' }}></div>
-                <div className="typing-dot" style={{ animationDelay: '0.2s' }}></div>
-              </div>
-            </motion.div>
-          )}
-          
           <div ref={messagesEndRef} />
         </div>
 
@@ -834,11 +955,11 @@ const ConversationInterface = ({
                 onChange={(e) => setMessage(e.target.value)}
                 placeholder="Type your message..."
                 className="input-field pr-20 min-h-[44px]"
-                disabled={!isConversationStarted || isTyping}
+                disabled={!isConversationStarted}
               />
               <button
                 type="submit"
-                disabled={!message.trim() || !isConversationStarted || isTyping}
+                disabled={!message.trim() || !isConversationStarted}
                 className="absolute right-2 top-1/2 transform -translate-y-1/2 p-2 text-gray-400 hover:text-primary-600 disabled:opacity-50"
               >
                 <Send className="w-5 h-5" />
@@ -948,6 +1069,8 @@ const ConversationInterface = ({
                           conversation={conversation}
                           onClose={() => setShowProfile(false)}
                           onUserUpdate={onUserUpdate}
+                          profileStore={profileStore.current}
+                          profileVersion={profileStoreVersion}
                         />
                       </motion.div>
                     )}

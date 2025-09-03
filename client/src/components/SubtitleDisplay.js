@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { cleanAssistantMessage } from '../utils/profile-sync';
 
 const SubtitleDisplay = ({ isVisible, transcription, agentUserId, userTranscription }) => {
   const [subtitles, setSubtitles] = useState([]);
@@ -10,13 +11,14 @@ const SubtitleDisplay = ({ isVisible, transcription, agentUserId, userTranscript
     if (transcription) {
       // Handle different types of transcription
       if (transcription.type === 'agent') {
-        // Agent transcription (TTS response)
-        setCurrentSubtitle(transcription.text);
+        // Agent transcription (TTS response) - clean markers for display
+        const cleanText = cleanAssistantMessage(transcription.text);
+        setCurrentSubtitle(cleanText);
         
         // Add to subtitle history
         setSubtitles(prev => [...prev, {
           id: Date.now(),
-          text: transcription.text,
+          text: cleanText,
           type: 'agent',
           timestamp: new Date().toISOString(),
           status: transcription.status || 'final'

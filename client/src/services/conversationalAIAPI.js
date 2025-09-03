@@ -122,6 +122,7 @@ class CovSubRenderController extends EventHelper {
         this.agentStates = new Map(); // Track agent states
         this.processedContentHashes = new Set(); // Track processed content hashes to prevent duplicates
         this.processedKeys = new Map(); // New map for deduplication based on content and speaker
+        this.processedUserMessages = new Set(); // Track processed user messages to prevent duplicates
     }
 
     setMode(mode) {
@@ -217,6 +218,31 @@ class CovSubRenderController extends EventHelper {
         // Determine speaker based on message type/object - use consistent naming
         let speaker;
         let agentUserId = context.publisher;
+        
+        // Skip user transcription messages from the agent to prevent duplicates
+        // The user's own transcription is handled separately
+        // BUT allow the first user response for profile extraction
+        if (message.object === 'user.transcription' && context.publisher === '8888') {
+            // Check if this is a meaningful user response (not just "ok", "yes", etc.)
+            const meaningfulResponse = message.text && message.text.trim().length > 2 && 
+                !['ok', 'yes', 'no', 'yeah', 'yep', 'nope'].includes(message.text.toLowerCase().trim());
+            
+            if (!meaningfulResponse) {
+                console.log('🔄 Skipping non-meaningful user response:', message.text);
+                return;
+            }
+            
+                    // Check if we already have this exact message to prevent duplicates
+        const messageKey = `${message.text}-${message.turn_id}`;
+        if (this.processedUserMessages.has(messageKey)) {
+            console.log('🔄 Skipping duplicate user message:', message.text);
+            return;
+        }
+        
+        // Mark this message as processed
+        this.processedUserMessages.add(messageKey);
+            console.log('✅ Allowing meaningful user response for profile extraction:', message.text);
+        }
         
         if (message.type === EMessageType.AGENT_TRANSCRIPTION || 
             message.customType === 'assistant.transcription' ||
@@ -548,6 +574,7 @@ class ConversationalAIAPI extends EventHelper {
         this.enableLog = false;
         this.covSubRenderController = null;
         this.isInitialized = false;
+        this.processedUserMessages = new Set(); // Track processed user messages to prevent duplicates
 
         this.setupController();
     }

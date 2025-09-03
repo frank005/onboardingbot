@@ -1,84 +1,30 @@
 import { useState, useEffect, useCallback } from 'react';
-import { io } from 'socket.io-client';
 import toast from 'react-hot-toast';
 
 export const useConversation = (ttsEnabled = true) => {
   const [conversation, setConversation] = useState(null);
-  const [socket, setSocket] = useState(null);
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    // Initialize socket connection
-    const newSocket = io();
-    setSocket(newSocket);
-
-    // Socket event listeners
-    newSocket.on('bot-response', (response) => {
-      setConversation(prev => ({
-        ...prev,
-        messages: [...(prev?.messages || []), {
-          role: 'assistant',
-          content: response.message,
-          timestamp: new Date().toISOString()
-        }],
-        currentTopic: response.currentTopic,
-        completedTopics: response.completedTopics,
-        formData: response.formData,
-        detectedInfo: response.detectedInfo
-      }));
-
-      // Play TTS if enabled
-      if (response.message && !response.demoMode) {
-        playTTS(response.message, ttsEnabled);
-      }
-    });
-
-    newSocket.on('error', (error) => {
-      toast.error(error.message || 'Connection error');
-    });
-
-    return () => {
-      newSocket.close();
-    };
-  }, []);
 
   const startConversation = useCallback(async (userId) => {
     setLoading(true);
     try {
-      const response = await fetch('/api/conversation/start', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ userId }),
-      });
-
-      const data = await response.json();
-      
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to start conversation');
-      }
-
-      setConversation({
-        id: data.data.conversationId,
+      // Create a simple conversation object - no server call needed
+      const conversationData = {
+        id: `conversation-${Date.now()}`,
         status: 'active',
         messages: [{
           role: 'assistant',
-          content: data.data.message,
+          content: "Hi! I'm your Welcome Bot. I'm here to help you get started with our platform. Let me guide you through the onboarding process.",
           timestamp: new Date().toISOString()
         }],
-        currentTopic: data.data.currentTopic,
-        completedTopics: data.data.completedTopics || [],
-        formData: data.data.formData || {},
-        detectedInfo: data.data.detectedInfo || {}
-      });
+        currentTopic: 'platform_overview',
+        completedTopics: [],
+        formData: {},
+        detectedInfo: []
+      };
 
-      // Join socket room
-      if (socket) {
-        socket.emit('join-conversation', { conversationId: data.data.conversationId });
-      }
-
-      return data.data;
+      setConversation(conversationData);
+      return conversationData;
     } catch (error) {
       console.error('Error starting conversation:', error);
       toast.error(error.message);
@@ -86,7 +32,7 @@ export const useConversation = (ttsEnabled = true) => {
     } finally {
       setLoading(false);
     }
-  }, [socket]);
+  }, []);
 
   const sendMessage = useCallback(async (message) => {
     if (!conversation) {
@@ -105,74 +51,18 @@ export const useConversation = (ttsEnabled = true) => {
       messages: [...(prev.messages || []), userMessage]
     }));
 
-    // Send message through socket
-    if (socket) {
-      socket.emit('user-message', {
-        userId: conversation.id,
-        message,
-        conversationId: conversation.id
-      });
-    } else {
-      // Fallback to REST API
-      try {
-        const response = await fetch('/api/conversation/message', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            userId: conversation.id,
-            message,
-            conversationId: conversation.id
-          }),
-        });
-
-        const data = await response.json();
-        
-        if (!data.success) {
-          throw new Error(data.error || 'Failed to send message');
-        }
-
-        // Add bot response
-        setConversation(prev => ({
-          ...prev,
-          messages: [...(prev.messages || []), {
-            role: 'assistant',
-            content: data.data.message,
-            timestamp: new Date().toISOString()
-          }],
-          currentTopic: data.data.currentTopic,
-          completedTopics: data.data.completedTopics,
-          formData: data.data.formData,
-          detectedInfo: data.data.detectedInfo
-        }));
-
-        // Play TTS if enabled and not demo mode
-        if (data.data.message && !data.data.demoMode) {
-          playTTS(data.data.message, ttsEnabled);
-        }
-      } catch (error) {
-        console.error('Error sending message:', error);
-        toast.error('Failed to send message');
-        throw error;
-      }
-    }
-  }, [conversation, socket]);
+    // No server call needed - messages are handled by Agora RTM
+    // Just add a placeholder response for now
+    console.log('Message sent via Agora RTM - no server response needed');
+      }, [conversation]);
 
   const getConversationStatus = useCallback(async (userId) => {
-    try {
-      const response = await fetch(`/api/conversation/status/${userId}`);
-      const data = await response.json();
-      
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to get conversation status');
-      }
-
-      return data.data;
-    } catch (error) {
-      console.error('Error getting conversation status:', error);
-      throw error;
-    }
+    // No server call needed - return basic status
+    return {
+      status: 'active',
+      currentTopic: 'platform_overview',
+      completedTopics: []
+    };
   }, []);
 
   const resetConversation = useCallback(async (userId) => {

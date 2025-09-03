@@ -4,32 +4,16 @@
   "description": "Conversational AI Demo for User Onboarding",
   "main": "server/index.js",
   "scripts": {
-    "dev": "concurrently \"npm run server\" \"npm run client\"",
-    "dev-alt": "./start-demo.sh",
-    "server": "nodemon server/index.js",
-    "client": "cd client && npm start",
-    "client-alt": "cd client && PORT=3002 npm run start-external",
+    "dev": "netlify dev",
     "build": "cd client && npm run build",
-    "install-all": "npm install && cd client && npm install"
+    "start": "cd client && npm start",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
-    "agora-access-token": "^2.0.4",
-    "agora-rtc-sdk-ng": "^4.19.3",
-    "axios": "^1.11.0",
-    "cors": "^2.8.5",
-    "dotenv": "^16.3.1",
-    "express": "^4.18.2",
-    "form-data": "^4.0.0",
-    "node-fetch": "^2.7.0",
-    "openai": "^4.20.1",
-    "socket.io": "^4.7.4",
-    "socket.io-client": "^4.7.4",
-    "uuid": "^9.0.1",
-    "ws": "^8.14.2"
+    "axios": "^1.11.0"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2",
-    "nodemon": "^3.0.2"
+    "netlify-cli": "^23.5.0"
   },
   "keywords": [
     "agora",

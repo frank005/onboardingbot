@@ -1,4 +1,5 @@
 import React from 'react';
+import { cleanAssistantMessage } from '../utils/profile-sync';
 
 const MessageBubble = ({ message, isUser }) => {
   // Get the speaker name for display
@@ -9,6 +10,9 @@ const MessageBubble = ({ message, isUser }) => {
   
   // Check if this is a temporary message
   const isTemp = message.isTemp || timestamp === '(live)';
+
+  // Clean assistant messages to remove markers, keep user messages as-is
+  const displayContent = isUser ? message.content : cleanAssistantMessage(message.content);
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`}>
@@ -25,7 +29,7 @@ const MessageBubble = ({ message, isUser }) => {
           {speaker} {isTemp && <span className="text-yellow-600">(live)</span>}
         </div>
         <div className="text-sm">
-          {message.content}
+          {displayContent}
         </div>
         <div className={`text-xs mt-1 ${
           isUser ? 'text-blue-100' : 'text-gray-500'

@@ -2,20 +2,40 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { X, User, Calendar, Heart, Brain, MapPin, Clock, CheckCircle } from 'lucide-react';
 
-const UserProfileCard = ({ user, conversation, onClose, onUserUpdate }) => {
+const UserProfileCard = ({ user, conversation, onClose, onUserUpdate, profileStore, profileVersion }) => {
+  // Force re-render when profile version changes
+  React.useEffect(() => {
+    // This will trigger a re-render when profileVersion changes
+  }, [profileVersion]);
+  
+  // Helper function to get profile data with field normalization
+  const getProfileValue = (fieldName) => {
+    const profileData = profileStore?.getProfile() || user?.profile || {};
+    
+    // Handle field name variations
+    if (fieldName === 'experienceLevel') {
+      return profileData.experience || profileData.experienceLevel || 'Not provided';
+    }
+    
+    return profileData[fieldName] || 'Not provided';
+  };
+  
   const formatDate = (dateString) => {
     if (!dateString) return 'Not provided';
     return new Date(dateString).toLocaleDateString();
   };
 
   const getProfileCompleteness = () => {
-    const fields = ['name', 'birthday', 'bio', 'interests', 'experience_level'];
-    const completed = fields.filter(field => user?.profile?.[field]).length;
+    const fields = ['name', 'birthday', 'bio', 'interests', 'experience'];
+    const profileData = profileStore?.getProfile() || user?.profile || {};
+    const completed = fields.filter(field => profileData[field] && profileData[field] !== 'Not provided').length;
     return Math.round((completed / fields.length) * 100);
   };
 
   const getDetectedInfoCount = () => {
-    return Object.keys(user?.detectedInfo || {}).length;
+    const profileData = profileStore?.getProfile() || {};
+    const filledFields = Object.values(profileData).filter(value => value && value !== 'Not provided').length;
+    return filledFields;
   };
 
   return (
@@ -47,7 +67,7 @@ const UserProfileCard = ({ user, conversation, onClose, onUserUpdate }) => {
             </div>
             <div>
               <h3 className="text-lg font-semibold text-gray-900">
-                {user?.profile?.name || 'Guest User'}
+                {profileStore?.getProfile()?.name || user?.profile?.name || 'Guest User'}
               </h3>
               <p className="text-sm text-gray-500">
                 {user?.onboardingCompleted ? 'Onboarding Complete' : 'Onboarding Pending'}
@@ -89,12 +109,45 @@ const UserProfileCard = ({ user, conversation, onClose, onUserUpdate }) => {
         {/* Profile Information */}
         <div className="card">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Profile Information</h3>
+          
+          {/* Extracted Profile Data (from profile-sync system) */}
+          {profileStore && (
+            <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+              <h4 className="text-sm font-semibold text-blue-800 mb-2">Extracted from Conversation</h4>
+              <div className="space-y-2 text-sm">
+                {(() => {
+                  try {
+                    if (!profileStore || typeof profileStore.getProfile !== 'function') {
+                      return <span className="text-blue-600">Profile store not ready</span>;
+                    }
+                    const profile = profileStore.getProfile() || {};
+                    const fields = Object.entries(profile);
+                    if (fields.length === 0) {
+                      return <span className="text-blue-600">No profile data extracted yet</span>;
+                    }
+                    return fields.map(([field, value]) => (
+                      <div key={field} className="flex justify-between">
+                        <span className="text-blue-700 capitalize">{field}:</span>
+                        <span className="text-blue-900 font-medium">
+                          {Array.isArray(value) ? value.join(', ') : value}
+                        </span>
+                      </div>
+                    ));
+                  } catch (error) {
+                    console.error('❌ Error reading profile store:', error);
+                    return <span className="text-red-600">Error reading profile store</span>;
+                  }
+                })()}
+              </div>
+            </div>
+          )}
+          
           <div className="space-y-3">
             <div className="flex items-center space-x-3">
               <User className="w-4 h-4 text-gray-400" />
               <span className="text-sm text-gray-600">Name:</span>
               <span className="text-sm font-medium">
-                {user?.profile?.name || 'Not provided'}
+                {getProfileValue('name')}
               </span>
             </div>
             
@@ -102,7 +155,7 @@ const UserProfileCard = ({ user, conversation, onClose, onUserUpdate }) => {
               <Calendar className="w-4 h-4 text-gray-400" />
               <span className="text-sm text-gray-600">Birthday:</span>
               <span className="text-sm font-medium">
-                {user?.profile?.birthday || 'Not provided'}
+                {getProfileValue('birthday')}
               </span>
             </div>
             
@@ -110,7 +163,7 @@ const UserProfileCard = ({ user, conversation, onClose, onUserUpdate }) => {
               <Heart className="w-4 h-4 text-gray-400 mt-0.5" />
               <span className="text-sm text-gray-600">Bio:</span>
               <span className="text-sm font-medium flex-1">
-                {user?.profile?.bio || 'Not provided'}
+                {getProfileValue('bio')}
               </span>
             </div>
             
@@ -118,7 +171,7 @@ const UserProfileCard = ({ user, conversation, onClose, onUserUpdate }) => {
               <Brain className="w-4 h-4 text-gray-400 mt-0.5" />
               <span className="text-sm text-gray-600">Interests:</span>
               <span className="text-sm font-medium flex-1">
-                {user?.profile?.interests || 'Not provided'}
+                {getProfileValue('interests')}
               </span>
             </div>
             
@@ -126,7 +179,7 @@ const UserProfileCard = ({ user, conversation, onClose, onUserUpdate }) => {
               <CheckCircle className="w-4 h-4 text-gray-400" />
               <span className="text-sm text-gray-600">Experience Level:</span>
               <span className="text-sm font-medium">
-                {user?.profile?.experience_level || 'Not provided'}
+                {getProfileValue('experienceLevel')}
               </span>
             </div>
           </div>

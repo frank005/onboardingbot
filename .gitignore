@@ -144,3 +144,5 @@ docker-compose.override.yml
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+# Local Netlify folder
+.netlify

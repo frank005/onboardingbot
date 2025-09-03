@@ -189,7 +189,7 @@ class AgoraService {
     }
 
     try {
-      await this.rtmClient.login({ uid: `user_${Date.now()}` });
+      // Single RTM login: do not call login() again - just createChannel() and join()
       const channel = this.rtmClient.createChannel(channelName);
       await channel.join();
       
@@ -485,10 +485,18 @@ class AgoraService {
     return audioResult && videoResult;
   }
 
-  // Create an Agora agent via REST API
+  // Create an Agora agent via direct Agora REST API
   async createAgent(channelName, agentUid, clientUid, prompt) {
     try {
-      const response = await fetch(`${this.baseUrl}/api/agora/agents`, {
+      console.log('🔗 Creating real Agora agent via REST API...');
+      console.log('🔗 Channel:', channelName);
+      console.log('🔗 Agent UID:', agentUid);
+      console.log('🔗 Client UID:', clientUid);
+      
+      // Call Netlify Function to create Agora agent
+      console.log('🔗 Creating Agora agent via Netlify Function...');
+      
+      const response = await fetch('/api/agora/agents', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -497,8 +505,7 @@ class AgoraService {
           channelName,
           agentUid,
           clientUid,
-          prompt,
-          userId: clientUid
+          prompt
         }),
       });
 
@@ -508,33 +515,52 @@ class AgoraService {
       }
 
       const data = await response.json();
-      console.log('✅ Agora agent created:', data);
+      console.log('✅ Agora agent created via Netlify Function:', data);
+      
+      // Check if the response has the expected structure
+      if (!data.success || !data.data) {
+        throw new Error('Invalid Netlify Function response format');
+      }
+      
+      // The Netlify Function returns { success: true, data: agent }
+      // where agent is the Agora API response with agent_id
+      const agentData = data.data;
+      console.log('🔍 Agent data from Netlify Function:', agentData);
+      
+      if (!agentData.agent_id) {
+        throw new Error('No agent_id in Netlify Function response');
+      }
       
       // Store current agent info
-      this.currentAgentId = data.data.agentId;
+      this.currentAgentId = agentData.agent_id;
       this.currentChannelName = channelName;
       this.isConnected = true;
       
-      return data.data;
+      return {
+        agentId: agentData.agent_id,
+        status: agentData.status,
+        createTs: agentData.create_ts
+      };
     } catch (error) {
       console.error('❌ Error creating Agora agent:', error);
       throw error;
     }
   }
 
-                // Send text message to agent via chat API
+                // Send text message to agent via Netlify Function
               async sendTextMessage(text, priority = 'INTERRUPT', interruptable = true) {
                 if (!this.currentAgentId) {
                   throw new Error('No active agent. Please create an agent first.');
                 }
 
                 try {
-                  const response = await fetch(`${this.baseUrl}/api/agora/agents/${this.currentAgentId}/chat`, {
+                  const response = await fetch(`/api/agora/agents/chat`, {
                     method: 'POST',
                     headers: {
                       'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
+                      agentId: this.currentAgentId,
                       messageType: 'text',
                       text,
                       priority,
@@ -566,12 +592,13 @@ class AgoraService {
                 const messageUuid = uuid || `img_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
                 try {
-                  const response = await fetch(`${this.baseUrl}/api/agora/agents/${this.currentAgentId}/chat`, {
+                  const response = await fetch(`/api/agora/agents/chat`, {
                     method: 'POST',
                     headers: {
                       'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
+                      agentId: this.currentAgentId,
                       messageType: 'image',
                       url: imageUrl,
                       uuid: messageUuid
@@ -605,11 +632,12 @@ class AgoraService {
     }
 
     try {
-      const response = await fetch(`${this.baseUrl}/api/agora/agents/${agentToInterrupt}/interrupt`, {
+      const response = await fetch(`/api/agora/agents/interrupt`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
+        body: JSON.stringify({ agentId: agentToInterrupt }),
       });
 
       if (!response.ok) {
@@ -635,8 +663,12 @@ class AgoraService {
     }
 
     try {
-      const response = await fetch(`${this.baseUrl}/api/agora/agents/${agentToStop}`, {
-        method: 'DELETE',
+      const response = await fetch(`/api/agora/agents/stop`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ agentId: agentToStop }),
       });
 
       if (!response.ok) {
@@ -741,7 +773,7 @@ class AgoraService {
 
   // Generate onboarding prompt
   generateOnboardingPrompt(currentTopic, completedTopics) {
-    const basePrompt = `You are a friendly and helpful conversational AI assistant designed to help new users onboard to our platform. 
+    const basePrompt = `[CLIENT_AGORA_SERVICE] You are a friendly and helpful conversational AI assistant designed to help new users onboard to our platform. 
 
 Your personality: friendly and helpful
 Current topic: ${currentTopic}
@@ -761,13 +793,75 @@ IMPORTANT RULES:
       case 'platform_overview':
         return basePrompt + `
 
+ONBOARDING FORM MODE (ALWAYS ACTIVE):
+- Guide user through profile creation STEP BY STEP, asking ONE question at a time:
+  1. FIRST: Ask for their name (just the name first)
+  2. SECOND: Ask for their birthday (just the birthday)
+  3. THIRD: Ask for their interests/hobbies (what do they like to do?)
+  4. FOURTH: Ask for a brief bio/description about themselves (work, background, etc.)
+  5. FIFTH: Ask about their experience level with AI/technology
+- IMPORTANT: Ask only ONE question at a time and wait for their response
+- Do NOT ask multiple questions in the same message
+- Make it conversational and engaging
+- Only move to the next step after getting the current information
+- Collect and store: name, birthday, bio, interests, experience level
+- Validate required fields (name, birthday)
+- Update user profile in real-time as information is collected
+
 PLATFORM OVERVIEW MODE:
 - Ask if the user wants a platform overview
 - If yes, explain key features briefly
 - If no, provide onboarding guide link
 - Move to onboarding form topic when appropriate
 - Detect user's technical comfort level
-- Update user profile with detected information`;
+- Update user profile with detected information
+
+MARKER RULES (CRITICAL FOR CLIENT PARSING — DO EXACTLY)
+
+GOAL
+On the SAME turn that a field becomes known or corrected, confirm it with markers and immediately ask the next question in the SAME message.
+
+FORMAT (NO TEXT BEFORE MARKERS)
+- The message MUST start with markers, then a single space, then the next question.
+- Use BOTH marker formats, in this exact order:
+  [[field:<fieldName> value:<value>]] [<value>] <next question here>
+
+FIELD NAMES
+- Only: name, birthday, interests, bio, experience.
+- For interests with multiple items, join with commas in the value (e.g., "hiking, chess").
+
+ONE FIELD PER MESSAGE
+- Confirm exactly one field per message (one marker set), then ask exactly one next question.
+
+CORRECTIONS
+- If the user corrects a value, emit a fresh confirmation using the same format, then the next question.
+
+SPEECH VS. TRANSCRIPT
+- The bracketed segments are NOT spoken (skip_patterns=[4]) but WILL appear in the transcript for the client to parse.
+- Do NOT add any other brackets anywhere else. Do NOT wrap the entire line in quotes or code blocks.
+
+EXAMPLES (markers first, then question)
+
+User: Bob Barker
+Assistant:
+[[field:name value:Bob Barker]] [Bob Barker] What is your birthday?
+
+User: 1990-11-18
+Assistant:
+[[field:birthday value:1990-11-18]] [1990-11-18] What are some of your interests or hobbies?
+
+User: hiking and chess
+Assistant:
+[[field:interests value:hiking, chess]] [hiking, chess] Please share a short bio (1–2 lines).
+
+User: Actually, use Robert.
+Assistant:
+[[field:name value:Robert Barker]] [Robert Barker] What is your birthday?
+
+Acceptance checks (prompt side):
+• Every advancing assistant turn starts with [[field:… value:…]] [value] followed by one space and the question.
+• No text appears before the markers.
+• Only one field is confirmed per message.`;
 
       case 'onboarding_form':
         return basePrompt + `
@@ -780,7 +874,71 @@ ONBOARDING FORM MODE:
 - Store responses in formData
 - Update user profile in real-time
 - Move to additional conversation when form is complete
-- Extract and store detected information`;
+- Extract and store detected information
+
+MARKER RULES (CRITICAL FOR CLIENT PARSING — DO EXACTLY)
+
+GOAL
+On the SAME turn that a field becomes known or corrected, confirm it with markers and immediately ask the next question in the SAME message.
+
+FORMAT (NO TEXT BEFORE MARKERS)
+- The message MUST start with markers, then a single space, then the next question.
+- Use BOTH marker formats, in this exact order:
+  [[field:<fieldName> value:<value>]] [<value>] <next question here>
+
+FIELD NAMES
+- Only: name, birthday, interests, bio, experience.
+- For interests with multiple items, join with commas in the value (e.g., "hiking, chess").
+
+ONE FIELD PER MESSAGE
+- Confirm exactly one field per message (one marker set), then ask exactly one next question.
+
+CORRECTIONS
+- If the user corrects a value, emit a fresh confirmation using the same format, then the next question.
+
+SPEECH VS. TRANSCRIPT
+- The bracketed segments are NOT spoken (skip_patterns=[4]) but WILL appear in the transcript for the client to parse.
+- Do NOT add any other brackets anywhere else. Do NOT wrap the entire line in quotes or code blocks.
+
+EXAMPLES (markers first, then question)
+
+User: Bob Barker
+Assistant:
+[[field:name value:Bob Barker]] [Bob Barker] What is your birthday?
+
+User: 1990-11-18
+Assistant:
+[[field:birthday value:1990-11-18]] [1990-11-18] What are some of your interests or hobbies?
+
+User: hiking and chess
+Assistant:
+[[field:interests value:hiking, chess]] [hiking, chess] Please share a short bio (1–2 lines).
+
+User: Actually, use Robert.
+Assistant:
+[[field:name value:Robert Barker]] [Robert Barker] What is your birthday?
+
+Acceptance checks (prompt side):
+• Every advancing assistant turn starts with [[field:… value:…]] [value] followed by one space and the question.
+• No text appears before the markers.
+• Only one field is confirmed per message.
+
+STRICT MARKER VALIDATION (DO NOT VIOLATE)
+
+- Never emit markers when you are only asking a question and do not yet have a value.
+- Never emit empty markers. The patterns [[field:... value:]] and [] are forbidden.
+- Emit markers only when confirming a concrete value you just received or just corrected.
+- If you do not have a value yet, ask the question normally with NO markers at all.
+
+NEGATIVE EXAMPLES (forbidden):
+[[field:name value:]] [] What is your name?
+[] What is your birthday?
+
+POSITIVE EXAMPLES:
+[[field:name value:Bob Barker]] [Bob Barker] What is your birthday?
+[[field:birthday value:1990-11-18]] [1990-11-18] What are some of your interests or hobbies?
+
+Acceptance: You should never again see [[field:name value:]] [].`;
 
       case 'additional_conversation':
         return basePrompt + `
@@ -796,10 +954,138 @@ ADDITIONAL CONVERSATION MODE:
   * Gender (if mentioned)
   * Experience level in various subjects
 - Update user profile with all detected information
-- Store conversation insights for analytics`;
+- Store conversation insights for analytics
+
+MARKER RULES (CRITICAL FOR CLIENT PARSING — DO EXACTLY)
+
+GOAL
+On the SAME turn that a field becomes known or corrected, confirm it with markers and immediately ask the next question in the SAME message.
+
+FORMAT (NO TEXT BEFORE MARKERS)
+- The message MUST start with markers, then a single space, then the next question.
+- Use BOTH marker formats, in this exact order:
+  [[field:<fieldName> value:<value>]] [<value>] <next question here>
+
+FIELD NAMES
+- Only: name, birthday, interests, bio, experience.
+- For interests with multiple items, join with commas in the value (e.g., "hiking, chess").
+
+ONE FIELD PER MESSAGE
+- Confirm exactly one field per message (one marker set), then ask exactly one next question.
+
+CORRECTIONS
+- If the user corrects a value, emit a fresh confirmation using the same format, then the next question.
+
+SPEECH VS. TRANSCRIPT
+- The bracketed segments are NOT spoken (skip_patterns=[4]) but WILL appear in the transcript for the client to parse.
+- Do NOT add any other brackets anywhere else. Do NOT wrap the entire line in quotes or code blocks.
+
+EXAMPLES (markers first, then question)
+
+User: Bob Barker
+Assistant:
+[[field:name value:Bob Barker]] [Bob Barker] What is your birthday?
+
+User: 1990-11-18
+Assistant:
+[[field:birthday value:1990-11-18]] [1990-11-18] What are some of your interests or hobbies?
+
+User: hiking and chess
+Assistant:
+[[field:interests value:hiking, chess]] [hiking, chess] Please share a short bio (1–2 lines).
+
+User: Actually, use Robert.
+Assistant:
+[[field:name value:Robert Barker]] [Robert Barker] What is your birthday?
+
+Acceptance checks (prompt side):
+• Every advancing assistant turn starts with [[field:… value:…]] [value] followed by one space and the question.
+• No text appears before the markers.
+• Only one field is confirmed per message.
+
+STRICT MARKER VALIDATION (DO NOT VIOLATE)
+
+- Never emit markers when you are only asking a question and do not yet have a value.
+- Never emit empty markers. The patterns [[field:... value:]] and [] are forbidden.
+- Emit markers only when confirming a concrete value you just received or just corrected.
+- If you do not have a value yet, ask the question normally with NO markers at all.
+
+NEGATIVE EXAMPLES (forbidden):
+[[field:name value:]] [] What is your name?
+[] What is your birthday?
+
+POSITIVE EXAMPLES:
+[[field:name value:Bob Barker]] [Bob Barker] What is your birthday?
+[[field:birthday value:1990-11-18]] [1990-11-18] What are some of your interests or hobbies?
+
+Acceptance: You should never again see [[field:name value:]] [].`;
 
       default:
-        return basePrompt;
+        return basePrompt + `
+
+MARKER RULES (CRITICAL FOR CLIENT PARSING — DO EXACTLY)
+
+GOAL
+On the SAME turn that a field becomes known or corrected, confirm it with markers and immediately ask the next question in the SAME message.
+
+FORMAT (NO TEXT BEFORE MARKERS)
+- The message MUST start with markers, then a single space, then the next question.
+- Use BOTH marker formats, in this exact order:
+  [[field:<fieldName> value:<value>]] [<value>] <next question here>
+
+FIELD NAMES
+- Only: name, birthday, interests, bio, experience.
+- For interests with multiple items, join with commas in the value (e.g., "hiking, chess").
+
+ONE FIELD PER MESSAGE
+- Confirm exactly one field per message (one marker set), then ask exactly one next question.
+
+CORRECTIONS
+- If the user corrects a value, emit a fresh confirmation using the same format, then the next question.
+
+SPEECH VS. TRANSCRIPT
+- The bracketed segments are NOT spoken (skip_patterns=[4]) but WILL appear in the transcript for the client to parse.
+- Do NOT add any other brackets anywhere else. Do NOT wrap the entire line in quotes or code blocks.
+
+EXAMPLES (markers first, then question)
+
+User: Bob Barker
+Assistant:
+[[field:name value:Bob Barker]] [Bob Barker] What is your birthday?
+
+User: 1990-11-18
+Assistant:
+[[field:birthday value:1990-11-18]] [1990-11-18] What are some of your interests or hobbies?
+
+User: hiking and chess
+Assistant:
+[[field:interests value:hiking, chess]] [hiking, chess] Please share a short bio (1–2 lines).
+
+User: Actually, use Robert.
+Assistant:
+[[field:name value:Robert Barker]] [Robert Barker] What is your birthday?
+
+Acceptance checks (prompt side):
+• Every advancing assistant turn starts with [[field:… value:…]] [value] followed by one space and the question.
+• No text appears before the markers.
+• Only one field is confirmed per message.
+
+STRICT MARKER VALIDATION (DO NOT VIOLATE)
+
+- Never emit markers when you are only asking a question and do not yet have a value.
+- Never emit empty markers. The patterns [[field:... value:]] and [] are forbidden.
+- Emit markers only when confirming a concrete value you just received or just corrected.
+- If you do not have a value yet, ask the question normally with NO markers at all.
+
+NEGATIVE EXAMPLES (forbidden):
+[[field:name value:]] [] What is your name?
+[] What is your birthday?
+
+POSITIVE EXAMPLES:
+[[field:name value:Bob Barker]] [Bob Barker] What is your birthday?
+[[field:birthday value:1990-11-18]] [1990-11-18] What are some of your interests or hobbies?
+
+Acceptance: You should never again see [[field:name value:]] [].`;
     }
   }
 }

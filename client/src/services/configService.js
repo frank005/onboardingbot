@@ -1,97 +1,27 @@
-class ClientConfigService {
+import clientConfigService from './clientConfigService';
+
+class ConfigService {
   constructor() {
     this.config = null;
-    this.loaded = false;
   }
 
-  async loadConfig() {
+  async getConfig() {
     try {
-      const response = await fetch('/api/config');
-      if (!response.ok) {
-        throw new Error(`Failed to load config: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      this.config = data;
-      this.loaded = true;
-      
-      // Set environment variables for client-side use
-      this.setClientEnvironmentVariables(data.clientConfig);
-      
-      console.log('✅ Client configuration loaded successfully');
-      return data;
+      // Use client-side config service instead of server API
+      this.config = await clientConfigService.getConfig();
+      return this.config;
     } catch (error) {
-      console.error('❌ Failed to load client configuration:', error);
-      // Fallback to default values
-      this.setDefaultEnvironmentVariables();
-      return null;
+      console.error('Error getting config:', error);
+      // Return default config if client service fails
+      return this.getDefaultConfig();
     }
   }
 
-  setClientEnvironmentVariables(clientConfig) {
-    // Set environment variables that the client needs
-    if (clientConfig.REACT_APP_AGORA_APP_ID) {
-      window.REACT_APP_AGORA_APP_ID = clientConfig.REACT_APP_AGORA_APP_ID;
-    }
-    if (clientConfig.REACT_APP_AGORA_CHANNEL) {
-      window.REACT_APP_AGORA_CHANNEL = clientConfig.REACT_APP_AGORA_CHANNEL;
-    }
-    if (clientConfig.REACT_APP_TTS_VENDOR) {
-      window.REACT_APP_TTS_VENDOR = clientConfig.REACT_APP_TTS_VENDOR;
-    }
-    if (clientConfig.REACT_APP_ASR_VENDOR) {
-      window.REACT_APP_ASR_VENDOR = clientConfig.REACT_APP_ASR_VENDOR;
-    }
-    if (clientConfig.REACT_APP_ENABLE_RTM !== undefined) {
-      window.REACT_APP_ENABLE_RTM = clientConfig.REACT_APP_ENABLE_RTM;
-    }
-    if (clientConfig.REACT_APP_ENABLE_RTC_VIDEO !== undefined) {
-      window.REACT_APP_ENABLE_RTC_VIDEO = clientConfig.REACT_APP_ENABLE_RTC_VIDEO;
-    }
-    if (clientConfig.REACT_APP_ENABLE_RTC_AUDIO !== undefined) {
-      window.REACT_APP_ENABLE_RTC_AUDIO = clientConfig.REACT_APP_ENABLE_RTC_AUDIO;
-    }
-    if (clientConfig.REACT_APP_AVATAR_ENABLED !== undefined) {
-      window.REACT_APP_AVATAR_ENABLED = clientConfig.REACT_APP_AVATAR_ENABLED;
-    }
-    if (clientConfig.REACT_APP_AGORA_FALLBACK_ENABLED !== undefined) {
-      window.REACT_APP_AGORA_FALLBACK_ENABLED = clientConfig.REACT_APP_AGORA_FALLBACK_ENABLED;
-    }
-  }
-
-  setDefaultEnvironmentVariables() {
-    // Load settings from localStorage if available
-    const savedSettings = localStorage.getItem('agoraSettings');
-    if (savedSettings) {
-      try {
-        const settings = JSON.parse(savedSettings);
-        Object.entries(settings).forEach(([key, value]) => {
-          window[key] = value;
-        });
-        console.log('✅ Loaded settings from localStorage');
-        return;
-      } catch (error) {
-        console.warn('⚠️ Failed to parse saved settings:', error);
-      }
-    }
-    
-    // Set default values if config loading fails
-    window.REACT_APP_AGORA_APP_ID = process.env.REACT_APP_AGORA_APP_ID;
-    window.REACT_APP_AGORA_CHANNEL = process.env.REACT_APP_AGORA_CHANNEL || 'onboarding_channel';
-    window.REACT_APP_TTS_VENDOR = process.env.REACT_APP_TTS_VENDOR || 'microsoft';
-    window.REACT_APP_ASR_VENDOR = process.env.REACT_APP_ASR_VENDOR || 'agora';
-    window.REACT_APP_ENABLE_RTM = process.env.REACT_APP_ENABLE_RTM === 'true';
-    window.REACT_APP_ENABLE_RTC_VIDEO = process.env.REACT_APP_ENABLE_RTC_VIDEO === 'true';
-    window.REACT_APP_ENABLE_RTC_AUDIO = process.env.REACT_APP_ENABLE_RTC_AUDIO === 'true';
-    window.REACT_APP_AVATAR_ENABLED = process.env.REACT_APP_AVATAR_ENABLED === 'true';
-    window.REACT_APP_AGORA_FALLBACK_ENABLED = process.env.REACT_APP_AGORA_FALLBACK_ENABLED === 'true';
-  }
-
-  // Get environment variable (prioritizes server config, falls back to process.env)
+  // Get environment variable (prioritizes client config, falls back to process.env)
   getEnvVar(key) {
-    // First try window variables (from server config)
-    if (window[key] !== undefined) {
-      return window[key];
+    // First try client config
+    if (this.config && this.config.clientConfig && this.config.clientConfig[key] !== undefined) {
+      return this.config.clientConfig[key];
     }
     
     // Fall back to process.env (for build-time variables)
@@ -150,7 +80,7 @@ class ClientConfigService {
 
   // Check if config is loaded
   isLoaded() {
-    return this.loaded;
+    return !!this.config;
   }
 
   // Validate required configuration
@@ -168,9 +98,35 @@ class ClientConfigService {
     
     return true;
   }
+
+  // Get default config for fallback
+  getDefaultConfig() {
+    return {
+      botName: 'Welcome Bot',
+      botPersonality: 'friendly and helpful',
+      enableVoiceInput: true,
+      enableTextInput: true,
+      enableAvatarDisplay: false,
+      avatarImageUrl: null,
+      onboardingFields: ['name', 'birthday', 'interests', 'bio', 'experienceLevel'],
+      requiredFields: ['name'],
+      optionalFields: ['birthday', 'interests', 'bio', 'experienceLevel', 'location', 'phone', 'email', 'website', 'socialHandles'],
+      clientConfig: {
+        REACT_APP_AGORA_APP_ID: process.env.REACT_APP_AGORA_APP_ID,
+        REACT_APP_AGORA_CHANNEL: process.env.REACT_APP_AGORA_CHANNEL || 'onboarding_channel',
+        REACT_APP_TTS_VENDOR: process.env.REACT_APP_TTS_VENDOR || 'microsoft',
+        REACT_APP_ASR_VENDOR: process.env.REACT_APP_ASR_VENDOR || 'agora',
+        REACT_APP_ENABLE_RTM: process.env.REACT_APP_ENABLE_RTM === 'true',
+        REACT_APP_ENABLE_RTC_VIDEO: process.env.REACT_APP_ENABLE_RTC_VIDEO === 'true',
+        REACT_APP_ENABLE_RTC_AUDIO: process.env.REACT_APP_ENABLE_RTC_AUDIO === 'true',
+        REACT_APP_AVATAR_ENABLED: process.env.REACT_APP_AVATAR_ENABLED === 'true',
+        REACT_APP_AGORA_FALLBACK_ENABLED: process.env.REACT_APP_AGORA_FALLBACK_ENABLED === 'true'
+      }
+    };
+  }
 }
 
 // Create singleton instance
-const clientConfigService = new ClientConfigService();
+const configService = new ConfigService();
 
-export default clientConfigService;
+export default configService;
