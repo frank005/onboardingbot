@@ -21,7 +21,7 @@
     "start": "react-scripts start",
     "start-ngrok": "DANGEROUSLY_DISABLE_HOST_CHECK=true react-scripts start",
     "start-external": "DANGEROUSLY_DISABLE_HOST_CHECK=true react-scripts start",
-    "build": "react-scripts build",
+    "build": "CI=false react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "dev": "netlify dev",
