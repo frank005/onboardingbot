@@ -113,8 +113,8 @@ This demo demonstrates how Agora's conversational AI can be used for user onboar
 
 ```bash
 git clone <repository-url>
-cd useronboarding
-npm run install-all
+cd onboardingbot
+npm install
 ```
 
 ### 2. Environment Setup
@@ -161,17 +161,17 @@ PORT=3001
 NODE_ENV=development
 ```
 
-### 3. Start Development Servers
+### 3. Start Development Server
 
 ```bash
 npm run dev
 ```
 
-This will start both the backend server (port 3001) and frontend (port 3000).
+This will start the Netlify dev server with both frontend and backend functions.
 
 ### 4. Access the Demo
 
-Open your browser to `http://localhost:3000`
+Open your browser to `http://localhost:8888`
 
 ## 📊 Demo Flow
 

@@ -1,13 +1,18 @@
 [build]
-  # Build the React app in /client
-  command = "cd client && npm install && npm run build"
-  publish = "client/build"
+  # Build the React app from root
+  command = "npm install && npm run build"
+  publish = "build"
   functions = "netlify/functions"
 
 [build.environment]
   NODE_VERSION = "18"
 
 # --- API redirects FIRST (explicit mappings) ---
+[[redirects]]
+  from = "/api/health"
+  to   = "/.netlify/functions/health"
+  status = 200
+
 [[redirects]]
   from = "/api/agora/agents"
   to   = "/.netlify/functions/agora-agents"

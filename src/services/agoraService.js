@@ -485,68 +485,109 @@ class AgoraService {
     return audioResult && videoResult;
   }
 
-  // Create an Agora agent via direct Agora REST API
-  async createAgent(channelName, agentUid, clientUid, prompt, profileContext = null) {
+  // Health check to ensure Netlify functions are ready
+  async healthCheck() {
     try {
-      console.log('🔗 Creating real Agora agent via REST API...');
-      console.log('🔗 Channel:', channelName);
-      console.log('🔗 Agent UID:', agentUid);
-      console.log('🔗 Client UID:', clientUid);
-      console.log('🔗 Profile Context:', profileContext);
-      
-      // Call Netlify Function to create Agora agent
-      console.log('🔗 Creating Agora agent via Netlify Function...');
-      
-      const response = await fetch('/api/agora/agents', {
-        method: 'POST',
+      const response = await fetch('/api/health', {
+        method: 'GET',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          channelName,
-          agentUid,
-          clientUid,
-          prompt,
-          profileContext
-        }),
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create agent');
+        throw new Error(`Health check failed with status: ${response.status}`);
       }
 
       const data = await response.json();
-      console.log('✅ Agora agent created via Netlify Function:', data);
-      
-      // Check if the response has the expected structure
-      if (!data.success || !data.data) {
-        throw new Error('Invalid Netlify Function response format');
-      }
-      
-      // The Netlify Function returns { success: true, data: agent }
-      // where agent is the Agora API response with agent_id
-      const agentData = data.data;
-      console.log('🔍 Agent data from Netlify Function:', agentData);
-      
-      if (!agentData.agent_id) {
-        throw new Error('No agent_id in Netlify Function response');
-      }
-      
-      // Store current agent info
-      this.currentAgentId = agentData.agent_id;
-      this.currentChannelName = channelName;
-      this.isConnected = true;
-      
-      return {
-        agentId: agentData.agent_id,
-        status: agentData.status,
-        createTs: agentData.create_ts
-      };
+      console.log('✅ Health check passed:', data);
+      return true;
     } catch (error) {
-      console.error('❌ Error creating Agora agent:', error);
-      throw error;
+      console.error('❌ Health check failed:', error);
+      return false;
     }
+  }
+
+  // Create an Agora agent via direct Agora REST API
+  async createAgent(channelName, agentUid, clientUid, prompt, profileContext = null) {
+    const maxRetries = 3;
+    let lastError;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`🔗 Creating real Agora agent via REST API... (attempt ${attempt}/${maxRetries})`);
+        console.log('🔗 Channel:', channelName);
+        console.log('🔗 Agent UID:', agentUid);
+        console.log('🔗 Client UID:', clientUid);
+        console.log('🔗 Profile Context:', profileContext);
+        
+        // Call Netlify Function to create Agora agent
+        console.log('🔗 Creating Agora agent via Netlify Function...');
+        
+        const response = await fetch('/api/agora/agents', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            channelName,
+            agentUid,
+            clientUid,
+            prompt,
+            profileContext
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to create agent');
+        }
+
+        const data = await response.json();
+        console.log('✅ Agora agent created via Netlify Function:', data);
+        
+        // Check if the response has the expected structure
+        if (!data.success || !data.data) {
+          throw new Error('Invalid Netlify Function response format');
+        }
+        
+        // The Netlify Function returns { success: true, data: agent }
+        // where agent is the Agora API response with agent_id
+        const agentData = data.data;
+        console.log('🔍 Agent data from Netlify Function:', agentData);
+        
+        if (!agentData.agent_id) {
+          throw new Error('No agent_id in Netlify Function response');
+        }
+        
+        // Store current agent info
+        this.currentAgentId = agentData.agent_id;
+        this.currentChannelName = channelName;
+        this.isConnected = true;
+        
+        return {
+          agentId: agentData.agent_id,
+          status: agentData.status,
+          createTs: agentData.create_ts
+        };
+      } catch (error) {
+        lastError = error;
+        console.error(`❌ Error creating Agora agent (attempt ${attempt}/${maxRetries}):`, error);
+        
+        // If it's a connection error and we have retries left, wait and try again
+        if (attempt < maxRetries && (error.message.includes('Failed to fetch') || error.message.includes('ERR_CONNECTION_REFUSED'))) {
+          console.log(`⏳ Waiting 2 seconds before retry...`);
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          continue;
+        }
+        
+        // If it's not a connection error or we're out of retries, throw immediately
+        throw error;
+      }
+    }
+    
+    // If we get here, all retries failed
+    throw lastError;
   }
 
                 // Send text message to agent via Netlify Function
