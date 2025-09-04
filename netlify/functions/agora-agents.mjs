@@ -25,7 +25,7 @@ export default async (req, ctx) => {
 
     // Parse request body
     const body = await req.json();
-    const { channelName, agentUid, clientUid, prompt } = body;
+    const { channelName, agentUid, clientUid, prompt, profileContext } = body;
     
     if (!channelName || !agentUid || !clientUid || !prompt) {
       return new Response(JSON.stringify({
@@ -41,42 +41,19 @@ export default async (req, ctx) => {
       });
     }
 
-    console.log('📋 Creating agent with:', { channelName, agentUid, clientUid });
+    console.log('📋 Creating agent with:', { channelName, agentUid, clientUid, hasProfileContext: !!profileContext });
 
-    // Generate agent configuration with required payload parameters
-    const agentConfig = {
-      name: `onboarding_agent_${Date.now()}`,
-      properties: {
-        channel: channelName,
-        token: '', // No token needed for testing
-        agent_rtc_uid: agentUid.toString(),
-        remote_rtc_uids: ["*"], // Allow all clients to connect
-        enable_string_uid: false,
-        idle_timeout: 30,
-        agent_rtm_uid: agentUid.toString(), // Critical for RTM messaging
-        advanced_features: {
-          enable_rtm: true // Required: enable RTM for data channel
-        },
-        asr: {
-          vendor: "ares",
-          language: "en-US"
-        },
-        parameters: {
-          audio_scenario: "chorus",
-          data_channel: "rtm", // Required: specifies RTM as data channel
-          enable_metrics: true,
-          enable_error_message: true,
-          transcript: {
-            enable: true // Critical: explicitly enables transcripts
-          }
-        },
-        llm: {
-          url: process.env.OPENAI_API_URL || 'https://api.openai.com/v1/chat/completions',
-          api_key: process.env.OPENAI_API_KEY || '',
-          system_messages: [
-            {
-              role: 'system',
-              content: prompt || `[AGORA_AGENT_SERVICE] You are a friendly and helpful conversational AI assistant designed to help new users onboard to our platform. 
+    // Build system messages array
+    const systemMessages = [];
+    
+    // Check if profile context exists and is not the base profile
+    const hasValidProfile = profileContext && 
+      profileContext.name && 
+      profileContext.name !== 'Guest User' && 
+      profileContext.name !== 'Not provided';
+    
+    // Build the main system prompt with optional PROFILE_CONTEXT concatenated
+    let systemPrompt = prompt || `[AGORA_AGENT_SERVICE] You are a friendly and helpful conversational AI assistant designed to help new users onboard to our platform. 
 
 Your personality: friendly and helpful
 
@@ -235,9 +212,59 @@ Assistant:
 
 User: "Actually, set my name to Robert Barker."
 Assistant:
-[[field:name value:Robert Barker]] [Robert Barker] Would you like to update anything else—birthday, interests, bio, or experience?`
-            }
-          ],
+[[field:name value:Robert Barker]] [Robert Barker] Would you like to update anything else—birthday, interests, bio, or experience?
+
+You still keep your Marker Rules that say "markers first, then the next question" and "one field per message." This block teaches the LLM to honor existing context and apply edits anytime with a friendly tone.`;
+
+    // Add PROFILE_CONTEXT to the main prompt if we have valid profile data
+    if (hasValidProfile) {
+      systemPrompt = `PROFILE_CONTEXT
+name: ${profileContext.name || ''}
+birthday: ${profileContext.birthday || ''}
+interests: ${profileContext.interests || ''}
+bio: ${profileContext.bio || ''}
+experience: ${profileContext.experience || ''}
+
+${systemPrompt}`;
+    }
+    
+        // Add main system prompt
+    systemMessages.push({
+      role: 'system',
+      content: systemPrompt
+    });
+
+    // Generate agent configuration with required payload parameters
+    const agentConfig = {
+      name: `onboarding_agent_${Date.now()}`,
+      properties: {
+        channel: channelName,
+        token: '', // No token needed for testing
+        agent_rtc_uid: agentUid.toString(),
+        remote_rtc_uids: ["*"], // Allow all clients to connect
+        enable_string_uid: false,
+        idle_timeout: 30,
+        agent_rtm_uid: agentUid.toString(), // Critical for RTM messaging
+        advanced_features: {
+          enable_rtm: true // Required: enable RTM for data channel
+        },
+        asr: {
+          vendor: "ares",
+          language: "en-US"
+        },
+        parameters: {
+          audio_scenario: "chorus",
+          data_channel: "rtm", // Required: specifies RTM as data channel
+          enable_metrics: true,
+          enable_error_message: true,
+          transcript: {
+            enable: true // Critical: explicitly enables transcripts
+          }
+        },
+        llm: {
+          url: process.env.OPENAI_API_URL || 'https://api.openai.com/v1/chat/completions',
+          api_key: process.env.OPENAI_API_KEY || '',
+          system_messages: systemMessages,
           greeting_message: "Hello! Welcome to our platform. I'm here to assist you. Would you like a quick overview of our platform and its features?",
           failure_message: "I'm having trouble processing that. Could you please rephrase?",
           max_history: 32,

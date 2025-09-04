@@ -43,5 +43,6 @@
     ]
   },
 
-  "homepage": "."
+  "homepage": ".",
+  "proxy": "http://localhost:8888"
 }

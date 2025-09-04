@@ -57,6 +57,14 @@ const UserProfile = ({ user, onUserUpdate }) => {
                   {user?.profile?.interests || 'Not provided'}
                 </span>
               </div>
+              
+              <div className="flex items-start space-x-3">
+                <Brain className="w-5 h-5 text-gray-400 mt-0.5" />
+                <span className="text-gray-600">Experience:</span>
+                <span className="font-medium flex-1">
+                  {user?.profile?.experienceLevel || user?.profile?.experience || 'Not provided'}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -83,12 +91,12 @@ const UserProfile = ({ user, onUserUpdate }) => {
                 </div>
               )}
               
-              {user?.detectedInfo?.experienceLevel && (
+              {user?.profile?.experience && (
                 <div className="flex items-center space-x-3">
                   <Brain className="w-5 h-5 text-gray-400" />
                   <span className="text-gray-600">Experience Level:</span>
                   <span className="font-medium capitalize">
-                    {user.detectedInfo.experienceLevel}
+                    {user.profile.experience}
                   </span>
                 </div>
               )}

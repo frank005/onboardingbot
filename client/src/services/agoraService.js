@@ -486,12 +486,13 @@ class AgoraService {
   }
 
   // Create an Agora agent via direct Agora REST API
-  async createAgent(channelName, agentUid, clientUid, prompt) {
+  async createAgent(channelName, agentUid, clientUid, prompt, profileContext = null) {
     try {
       console.log('🔗 Creating real Agora agent via REST API...');
       console.log('🔗 Channel:', channelName);
       console.log('🔗 Agent UID:', agentUid);
       console.log('🔗 Client UID:', clientUid);
+      console.log('🔗 Profile Context:', profileContext);
       
       // Call Netlify Function to create Agora agent
       console.log('🔗 Creating Agora agent via Netlify Function...');
@@ -505,7 +506,8 @@ class AgoraService {
           channelName,
           agentUid,
           clientUid,
-          prompt
+          prompt,
+          profileContext
         }),
       });
 

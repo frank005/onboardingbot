@@ -8,7 +8,7 @@ import Settings from './components/Settings';
 import Navigation from './components/Navigation';
 import { useConversation } from './hooks/useConversation';
 import { useUser } from './hooks/useUser';
-import clientConfigService from './services/configService';
+import clientConfigService from './services/clientConfigService';
 
 function App() {
   const [config, setConfig] = useState(null);
@@ -24,9 +24,10 @@ function App() {
         const data = await clientConfigService.getConfig();
         setConfig(data);
         
-        // Validate configuration
-        if (!clientConfigService.validate()) {
-          toast.error('Configuration validation failed. Check console for details.');
+        // Validate configuration silently (no error toast needed)
+        const validation = clientConfigService.validateConfig();
+        if (!validation.isValid) {
+          console.warn('Configuration validation warnings:', validation.errors);
         }
         
         setLoading(false);

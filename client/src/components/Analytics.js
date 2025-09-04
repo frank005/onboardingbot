@@ -128,6 +128,10 @@ const Analytics = ({ conversation, user }) => {
                 <span className="text-gray-600">Interests:</span>
                 <span className="font-medium">{user?.profile?.interests || 'Not provided'}</span>
               </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Experience:</span>
+                <span className="font-medium">{user?.profile?.experience || 'Not provided'}</span>
+              </div>
             </div>
           </div>
 

@@ -17,7 +17,7 @@ export const useUser = () => {
         birthday: 'Not provided',
         bio: 'Not provided',
         interests: 'Not provided',
-        experienceLevel: 'Not provided',
+        experience: 'Not provided',
         location: 'Not provided',
         phone: 'Not provided',
         email: 'Not provided',
@@ -70,61 +70,69 @@ export const useUser = () => {
   }, [createNewUser]);
 
   const updateUser = useCallback(async (updates) => {
-    if (!user) return;
+    // Use functional update to get the current user state
+    setUser(currentUser => {
+      if (!currentUser) return currentUser;
 
-    console.log('🔄 updateUser called with:', updates);
-    console.log('🔄 Current user:', user);
+      console.log('🔄 updateUser called with:', updates);
+      console.log('🔄 Current user:', currentUser);
 
-    // Ensure profile object exists
-    const currentProfile = user.profile || {};
-    
-    // Handle both direct profile updates and nested profile updates
-    let profileUpdates = updates;
-    if (updates.profile) {
-      // If updates.profile exists, merge it with current profile
-      profileUpdates = { ...currentProfile, ...updates.profile };
-      console.log('🔄 Merging nested profile updates:', { currentProfile, updates: updates.profile, result: profileUpdates });
-    } else {
-      // Otherwise, treat updates as direct profile updates
-      profileUpdates = { ...currentProfile, ...updates };
-      console.log('🔄 Merging direct profile updates:', { currentProfile, updates, result: profileUpdates });
-    }
-    
-    console.log('🔄 Current profile:', currentProfile);
-    console.log('🔄 Updates:', updates);
-    console.log('🔄 Profile updates:', profileUpdates);
-    
-    const updatedUser = {
-      ...user,
-      profile: profileUpdates,
-      updatedAt: new Date().toISOString()
-    };
-
-    setUser(updatedUser);
-    sessionStorage.setItem('conversational-ai-user', JSON.stringify(updatedUser));
-
-    // Update user using client-side service
-    try {
-      // First, try to get the user to see if they exist
-      const existingUser = await clientUserService.getUserById(user.id);
-      if (!existingUser) {
-        // User doesn't exist, create them first
-        console.log('🔄 User not found in clientUserService, creating first:', user.id);
-        await clientUserService.createUser(updatedUser);
-        console.log('✅ User created in clientUserService:', user.id);
+      // Ensure profile object exists
+      const currentProfile = currentUser.profile || {};
+      
+      // Handle both direct profile updates and nested profile updates
+      let profileUpdates = updates;
+      if (updates.profile) {
+        // If updates.profile exists, merge it with current profile
+        profileUpdates = { ...currentProfile, ...updates.profile };
+        console.log('🔄 Merging nested profile updates:', { currentProfile, updates: updates.profile, result: profileUpdates });
+      } else {
+        // Otherwise, treat updates as direct profile updates
+        profileUpdates = { ...currentProfile, ...updates };
+        console.log('🔄 Merging direct profile updates:', { currentProfile, updates, result: profileUpdates });
       }
       
-      // Now update the profile - pass profileUpdates directly, not wrapped in profile object
-      await clientUserService.updateUserProfile(user.id, profileUpdates);
-      console.log('✅ User profile updated in clientUserService:', user.id);
-    } catch (error) {
-      console.error('❌ Error updating user profile:', error);
-      // If update still fails, try to recreate
+      console.log('🔄 Current profile:', currentProfile);
+      console.log('🔄 Updates:', updates);
+      console.log('🔄 Profile updates:', profileUpdates);
+      
+      const updatedUser = {
+        ...currentUser,
+        profile: profileUpdates,
+        updatedAt: new Date().toISOString()
+      };
+
+      // Update sessionStorage
+      sessionStorage.setItem('conversational-ai-user', JSON.stringify(updatedUser));
+      
+      return updatedUser;
+    });
+
+    // Update user using client-side service (need to get current user for ID)
+    const currentUser = user;
+    if (currentUser?.id) {
       try {
-        await clientUserService.createUser(updatedUser);
-        console.log('✅ User recreated in clientUserService:', user.id);
-      } catch (createError) {
-        console.error('❌ Failed to recreate user:', createError);
+        // First, try to get the user to see if they exist
+        const existingUser = await clientUserService.getUserById(currentUser.id);
+        if (!existingUser) {
+          // User doesn't exist, create them first
+          console.log('🔄 User not found in clientUserService, creating first:', currentUser.id);
+          await clientUserService.createUser(currentUser);
+          console.log('✅ User created in clientUserService:', currentUser.id);
+        }
+        
+        // Now update the profile - pass profileUpdates directly, not wrapped in profile object
+        await clientUserService.updateUserProfile(currentUser.id, updates);
+        console.log('✅ User profile updated in clientUserService:', currentUser.id);
+      } catch (error) {
+        console.error('❌ Error updating user profile:', error);
+        // If update still fails, try to recreate
+        try {
+          await clientUserService.createUser(currentUser);
+          console.log('✅ User recreated in clientUserService:', currentUser.id);
+        } catch (createError) {
+          console.error('❌ Failed to recreate user:', createError);
+        }
       }
     }
   }, [user]);

@@ -2,15 +2,10 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { X, User, Calendar, Heart, Brain, MapPin, Clock, CheckCircle } from 'lucide-react';
 
-const UserProfileCard = ({ user, conversation, onClose, onUserUpdate, profileStore, profileVersion }) => {
-  // Force re-render when profile version changes
-  React.useEffect(() => {
-    // This will trigger a re-render when profileVersion changes
-  }, [profileVersion]);
-  
+const UserProfileCard = ({ user, conversation, onClose, onUserUpdate }) => {
   // Helper function to get profile data with field normalization
   const getProfileValue = (fieldName) => {
-    const profileData = profileStore?.getProfile() || user?.profile || {};
+    const profileData = user?.profile || {};
     
     // Handle field name variations
     if (fieldName === 'experienceLevel') {
@@ -27,13 +22,13 @@ const UserProfileCard = ({ user, conversation, onClose, onUserUpdate, profileSto
 
   const getProfileCompleteness = () => {
     const fields = ['name', 'birthday', 'bio', 'interests', 'experience'];
-    const profileData = profileStore?.getProfile() || user?.profile || {};
+    const profileData = user?.profile || {};
     const completed = fields.filter(field => profileData[field] && profileData[field] !== 'Not provided').length;
     return Math.round((completed / fields.length) * 100);
   };
 
   const getDetectedInfoCount = () => {
-    const profileData = profileStore?.getProfile() || {};
+    const profileData = user?.profile || {};
     const filledFields = Object.values(profileData).filter(value => value && value !== 'Not provided').length;
     return filledFields;
   };
@@ -67,7 +62,7 @@ const UserProfileCard = ({ user, conversation, onClose, onUserUpdate, profileSto
             </div>
             <div>
               <h3 className="text-lg font-semibold text-gray-900">
-                {profileStore?.getProfile()?.name || user?.profile?.name || 'Guest User'}
+                {user?.profile?.name || 'Guest User'}
               </h3>
               <p className="text-sm text-gray-500">
                 {user?.onboardingCompleted ? 'Onboarding Complete' : 'Onboarding Pending'}
@@ -110,37 +105,7 @@ const UserProfileCard = ({ user, conversation, onClose, onUserUpdate, profileSto
         <div className="card">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Profile Information</h3>
           
-          {/* Extracted Profile Data (from profile-sync system) */}
-          {profileStore && (
-            <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-              <h4 className="text-sm font-semibold text-blue-800 mb-2">Extracted from Conversation</h4>
-              <div className="space-y-2 text-sm">
-                {(() => {
-                  try {
-                    if (!profileStore || typeof profileStore.getProfile !== 'function') {
-                      return <span className="text-blue-600">Profile store not ready</span>;
-                    }
-                    const profile = profileStore.getProfile() || {};
-                    const fields = Object.entries(profile);
-                    if (fields.length === 0) {
-                      return <span className="text-blue-600">No profile data extracted yet</span>;
-                    }
-                    return fields.map(([field, value]) => (
-                      <div key={field} className="flex justify-between">
-                        <span className="text-blue-700 capitalize">{field}:</span>
-                        <span className="text-blue-900 font-medium">
-                          {Array.isArray(value) ? value.join(', ') : value}
-                        </span>
-                      </div>
-                    ));
-                  } catch (error) {
-                    console.error('❌ Error reading profile store:', error);
-                    return <span className="text-red-600">Error reading profile store</span>;
-                  }
-                })()}
-              </div>
-            </div>
-          )}
+
           
           <div className="space-y-3">
             <div className="flex items-center space-x-3">
@@ -179,7 +144,7 @@ const UserProfileCard = ({ user, conversation, onClose, onUserUpdate, profileSto
               <CheckCircle className="w-4 h-4 text-gray-400" />
               <span className="text-sm text-gray-600">Experience Level:</span>
               <span className="text-sm font-medium">
-                {getProfileValue('experienceLevel')}
+                {getProfileValue('experience')}
               </span>
             </div>
           </div>
@@ -215,7 +180,7 @@ const UserProfileCard = ({ user, conversation, onClose, onUserUpdate, profileSto
                   <Brain className="w-4 h-4 text-gray-400" />
                   <span className="text-sm text-gray-600">Experience Level:</span>
                   <span className="text-sm font-medium capitalize">
-                    {user.detectedInfo.experienceLevel}
+                    {user.detectedInfo.experience}
                   </span>
                 </div>
               )}
