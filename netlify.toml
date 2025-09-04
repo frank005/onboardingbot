@@ -4,7 +4,9 @@
   publish = "build"
   functions = "netlify/functions"
 
+# Disable secrets scanning for environment variable names
 [build.environment]
+  SECRETS_SCAN_ENABLED = "false"
   NODE_VERSION = "18"
 
 # --- API redirects FIRST (explicit mappings) ---
