@@ -3,7 +3,7 @@
 
 import axios from 'axios';
 
-export default async (req, ctx) => {
+const handler = async (req, ctx) => {
   try {
     // Only allow POST requests
     if (req.method !== "POST") {
@@ -27,10 +27,10 @@ export default async (req, ctx) => {
     const body = await req.json();
     const { channelName, agentUid, clientUid, prompt, profileContext } = body;
     
-    if (!channelName || !agentUid || !clientUid || !prompt) {
+    if (!channelName || !agentUid || !clientUid) {
       return new Response(JSON.stringify({
         success: false,
-        error: 'Missing required fields: channelName, agentUid, clientUid, prompt'
+        error: 'Missing required fields: channelName, agentUid, clientUid'
       }), {
         status: 400,
         headers: { 
@@ -53,7 +53,8 @@ export default async (req, ctx) => {
       profileContext.name !== 'Not provided';
     
     // Build the main system prompt with optional PROFILE_CONTEXT concatenated
-    let systemPrompt = prompt || `[AGORA_AGENT_SERVICE] You are a friendly and helpful conversational AI assistant designed to help new users onboard to our platform. 
+    // If prompt is null (from agoraService), use the comprehensive prompt from this function
+    let systemPrompt = prompt || `[AGORA_AGENT_SERVICE] You are a friendly and helpful conversational AI assistant designed to help new users onboard to our platform.
 
 Your personality: friendly and helpful
 
@@ -367,3 +368,5 @@ ${systemPrompt}`;
     });
   }
 };
+
+export default handler;

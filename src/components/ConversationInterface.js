@@ -204,7 +204,9 @@ const ConversationInterface = ({
       
       const appId = window.REACT_APP_AGORA_APP_ID || process.env.REACT_APP_AGORA_APP_ID || 'your_agora_app_id';
       const clientUid = Math.floor(Math.random() * 10000);
-      const channelName = window.REACT_APP_AGORA_CHANNEL || process.env.REACT_APP_AGORA_CHANNEL || "onboarding_channel";
+      // Generate unique channel name for each session to allow multiple users
+      const baseChannelName = window.REACT_APP_AGORA_CHANNEL || process.env.REACT_APP_AGORA_CHANNEL || "onboarding_channel";
+      const channelName = `${baseChannelName}_${userId}_${Date.now()}`;
       
       console.log('🔍 Environment variable REACT_APP_AGORA_APP_ID:', window.REACT_APP_AGORA_APP_ID || process.env.REACT_APP_AGORA_APP_ID);
       console.log('🔍 Using App ID:', appId);
@@ -579,8 +581,9 @@ const ConversationInterface = ({
 
   const startAgoraConversation = async (userId) => {
     try {
-      // Generate channel name
-      const channelName = `onboarding_${userId}_${Date.now()}`;
+      // Generate unique channel name for each session to allow multiple users
+      const baseChannelName = window.REACT_APP_AGORA_CHANNEL || process.env.REACT_APP_AGORA_CHANNEL || "onboarding_channel";
+      const channelName = `${baseChannelName}_${userId}_${Date.now()}`;
       setAgoraChannelName(channelName);
       
       // Initialize RTC and Signaling clients

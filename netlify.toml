@@ -35,6 +35,11 @@
   to   = "/.netlify/functions/agora-agents-stop"
   status = 200
 
+[[redirects]]
+  from = "/api/conversation/stop/*"
+  to   = "/.netlify/functions/conversation-stop"
+  status = 200
+
 # --- SPA catch-all LAST ---
 [[redirects]]
   from = "/*"
