@@ -115,11 +115,11 @@ class AgoraService {
       // Initialize Signaling Client (RTM) - RTM v2.x style
       const clientUid = uid || Math.floor(Math.random() * 1000000) + 1000;
       console.log('🔍 Creating RTM client with UID:', clientUid);
-      console.log('🔍 RTM App ID being used:', appId);
-      console.log('🔍 RTM App ID length:', appId.length);
-      console.log('🔍 RTM App ID type:', typeof appId);
-      console.log('🔍 RTM App ID hex:', Array.from(appId).map(c => c.charCodeAt(0).toString(16).padStart(2, '0')).join(''));
-      console.log('🔍 RTM App ID trimmed:', appId.trim());
+      // console.log('🔍 RTM App ID being used:', appId);
+      // console.log('🔍 RTM App ID length:', appId.length);
+      // console.log('🔍 RTM App ID type:', typeof appId);
+      // console.log('🔍 RTM App ID hex:', Array.from(appId).map(c => c.charCodeAt(0).toString(16).padStart(2, '0')).join(''));
+      // console.log('🔍 RTM App ID trimmed:', appId.trim());
       
       this.rtmClient = new AgoraRTMInstance(appId.trim(), clientUid.toString(), {
         token: null, // No token for testing
@@ -162,7 +162,7 @@ class AgoraService {
     try {
       // For testing without tokens, pass null as token
       const appId = window.REACT_APP_AGORA_APP_ID || process.env.REACT_APP_AGORA_APP_ID || 'your_agora_app_id';
-      console.log('🔍 Using App ID:', appId);
+      // console.log('🔍 Using App ID:', appId);
       await this.rtcEngine.join(
         appId,
         channelName,
@@ -554,7 +554,7 @@ class AgoraService {
         // The Netlify Function returns { success: true, data: agent }
         // where agent is the Agora API response with agent_id
         const agentData = data.data;
-        console.log('🔍 Agent data from Netlify Function:', agentData);
+        // console.log('🔍 Agent data from Netlify Function:', agentData);
         
         if (!agentData.agent_id) {
           throw new Error('No agent_id in Netlify Function response');

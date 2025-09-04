@@ -1,7 +1,7 @@
 // Netlify Function: POST /api/conversation/stop/{userId}
 // Stops a conversation for a specific user
 
-export default async (req, ctx) => {
+const handler = async (req, ctx) => {
   try {
     // Allow POST requests
     if (req.method !== "POST") {
@@ -19,7 +19,7 @@ export default async (req, ctx) => {
       });
     }
 
-    console.log('🔍 Conversation stop function called');
+    // console.log('🔍 Conversation stop function called');
 
     // Extract userId from the URL path
     const url = new URL(req.url);
@@ -40,7 +40,7 @@ export default async (req, ctx) => {
       });
     }
 
-    console.log(`🛑 Stopping conversation for user ${userId}...`);
+    // console.log(`🛑 Stopping conversation for user ${userId}...`);
 
     // For now, this is just a placeholder that logs the stop request
     // In a real implementation, you might:
@@ -49,7 +49,7 @@ export default async (req, ctx) => {
     // 3. Send notifications to other participants
     // 4. Log analytics data
     
-    console.log(`✅ Conversation stopped for user ${userId}`);
+    // console.log(`✅ Conversation stopped for user ${userId}`);
     
     return new Response(JSON.stringify({
       success: true,
@@ -80,3 +80,5 @@ export default async (req, ctx) => {
     });
   }
 };
+
+export default handler;

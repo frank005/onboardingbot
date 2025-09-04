@@ -104,7 +104,7 @@ const ConversationInterface = ({
   // Direct profile updates (no more Socket.IO)
   useEffect(() => {
     if (user?.id) {
-      console.log('🔍 User ID available for profile updates:', user.id);
+      // console.log('🔍 User ID available for profile updates:', user.id);
     }
   }, [user?.id]);
 
@@ -135,7 +135,7 @@ const ConversationInterface = ({
       setProcessedMessageIds(new Set());
       setLastProcessedMessageCount(0);
       
-      console.log('🔍 Starting conversation with userId:', userId);
+      // console.log('🔍 Starting conversation with userId:', userId);
       
       // Always use Agora for now - no server fallback
       setUseAgora(true);
@@ -200,7 +200,7 @@ const ConversationInterface = ({
     try {
       console.log('🔗 Connecting to Agora RTM...');
       
-      console.log('🔍 Connecting to Agora RTM with user data:', user?.id);
+      // console.log('🔍 Connecting to Agora RTM with user data:', user?.id);
       
       const appId = window.REACT_APP_AGORA_APP_ID || process.env.REACT_APP_AGORA_APP_ID || 'your_agora_app_id';
       const clientUid = Math.floor(Math.random() * 10000);
@@ -208,12 +208,12 @@ const ConversationInterface = ({
       const baseChannelName = window.REACT_APP_AGORA_CHANNEL || process.env.REACT_APP_AGORA_CHANNEL || "onboarding_channel";
       const channelName = `${baseChannelName}_${userId}_${Date.now()}`;
       
-      console.log('🔍 Environment variable REACT_APP_AGORA_APP_ID:', window.REACT_APP_AGORA_APP_ID || process.env.REACT_APP_AGORA_APP_ID);
-      console.log('🔍 Using App ID:', appId);
-      console.log('🔍 App ID length:', appId.length);
-      console.log('🔍 App ID type:', typeof appId);
-      console.log('🔍 Using Channel Name:', channelName);
-      console.log('🔍 Using Client UID:', clientUid);
+      // console.log('🔍 Environment variable REACT_APP_AGORA_APP_ID:', window.REACT_APP_AGORA_APP_ID || process.env.REACT_APP_AGORA_APP_ID);
+      // console.log('🔍 Using App ID:', appId);
+      // console.log('🔍 App ID length:', appId.length);
+      // console.log('🔍 App ID type:', typeof appId);
+      // console.log('🔍 Using Channel Name:', channelName);
+      // console.log('🔍 Using Client UID:', clientUid);
       
       // Initialize Agora clients
       await agoraService.initializeClients(appId, clientUid);
@@ -308,24 +308,24 @@ const ConversationInterface = ({
               );
               
               // Debug logging for speaker detection
-              console.log('🔍 Speaker detection debug:', {
-                speaker: message.data.speaker,
-                speakerLower: message.data.speaker?.toLowerCase(),
-                isUserMessage,
-                isAssistantMessage,
-                includesUser: message.data.speaker?.toLowerCase().includes('user'),
-                includesUserParen: message.data.speaker?.toLowerCase().includes('user (')
-              });
+              // console.log('🔍 Speaker detection debug:', {
+              //   speaker: message.data.speaker,
+              //   speakerLower: message.data.speaker?.toLowerCase(),
+              //   isUserMessage,
+              //   isAssistantMessage,
+              //   includesUser: message.data.speaker?.toLowerCase().includes('user'),
+              //   includesUserParen: message.data.speaker?.toLowerCase().includes('user (')
+              // });
               
               // Debug logging for message processing
-              console.log('🔍 Message processing debug:', {
-                speaker: message.data.speaker,
-                isUserMessage,
-                isAssistantMessage,
-                fullText: fullText.substring(0, 50) + '...',
-                isFinal: message.data.isFinal || message.data.final,
-                userExists: !!user?.id
-              });
+              // console.log('🔍 Message processing debug:', {
+              //   speaker: message.data.speaker,
+              //   isUserMessage,
+              //   isAssistantMessage,
+              //   fullText: fullText.substring(0, 50) + '...',
+              //   isFinal: message.data.isFinal || message.data.final,
+              //   userExists: !!user?.id
+              // });
             
               // Process all messages (both final and non-final) like the demo
               if (isUserMessage || isAssistantMessage) {

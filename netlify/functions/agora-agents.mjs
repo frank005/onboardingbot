@@ -41,7 +41,7 @@ const handler = async (req, ctx) => {
       });
     }
 
-    console.log('📋 Creating agent with:', { channelName, agentUid, clientUid, hasProfileContext: !!profileContext });
+    // console.log('📋 Creating agent with:', { channelName, agentUid, clientUid, hasProfileContext: !!profileContext });
 
     // Build system messages array
     const systemMessages = [];
@@ -316,12 +316,12 @@ ${systemPrompt}`;
     const url = `${baseUrl}/projects/${appId}/join`;
     
     console.log('🚀 Creating Agora agent via REST API...');
-    console.log('🌐 URL:', url);
-    console.log('📤 Request payload:', JSON.stringify(agentConfig, null, 2));
+    // console.log('🌐 URL:', url);
+    // console.log('📤 Request payload:', JSON.stringify(agentConfig, null, 2));
     
     const response = await axios.post(url, agentConfig, { headers });
     
-    console.log('🔍 Agora API Response:', JSON.stringify(response.data, null, 2));
+    // console.log('🔍 Agora API Response:', JSON.stringify(response.data, null, 2));
     
     if (response.data && (response.data.agent_id || response.data.agentId)) {
       const agentId = response.data.agent_id || response.data.agentId;

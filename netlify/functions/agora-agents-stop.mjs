@@ -3,7 +3,7 @@
 
 import axios from 'axios';
 
-export default async (req, ctx) => {
+const handler = async (req, ctx) => {
   try {
     // Allow POST requests (client sends POST, Agora API expects POST to /leave)
     if (req.method !== "POST") {
@@ -21,7 +21,7 @@ export default async (req, ctx) => {
       });
     }
 
-    console.log('🔍 Agora agents stop function called');
+    // console.log('🔍 Agora agents stop function called');
 
     // Parse request body
     const body = await req.json();
@@ -41,7 +41,7 @@ export default async (req, ctx) => {
       });
     }
 
-    console.log(`🛑 Stopping agent ${agentId}...`);
+    // console.log(`🛑 Stopping agent ${agentId}...`);
 
     // Call Agora leave API
     const appId = process.env.AGORA_APP_ID;
@@ -72,7 +72,7 @@ export default async (req, ctx) => {
 
     const response = await axios.post(apiUrl, {}, { headers });
     
-    console.log(`✅ Agent ${agentId} stopped:`, response.data);
+    // console.log(`✅ Agent ${agentId} stopped:`, response.data);
     
     return new Response(JSON.stringify({
       success: true,
@@ -101,3 +101,5 @@ export default async (req, ctx) => {
     });
   }
 };
+
+export default handler;
