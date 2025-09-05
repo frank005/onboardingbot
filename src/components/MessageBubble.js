@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanAssistantMessage } from '../utils/profile-sync';
+import { normalizeAssistant } from '../utils/normalizeAssistant';
 
 const MessageBubble = ({ message, isUser }) => {
   // Get the speaker name for display
@@ -12,7 +12,8 @@ const MessageBubble = ({ message, isUser }) => {
   const isTemp = message.isTemp || timestamp === '(live)';
 
   // Clean assistant messages to remove markers, keep user messages as-is
-  const displayContent = isUser ? message.content : cleanAssistantMessage(message.content);
+  // Use content field which should already be cleaned by ConversationInterface
+  const displayContent = isUser ? message.content : normalizeAssistant(message.content).visibleText;
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`}>

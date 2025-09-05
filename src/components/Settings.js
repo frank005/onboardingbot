@@ -24,12 +24,26 @@ const Settings = ({ config, onBack }) => {
         AGORA_APP_ID: config.clientConfig?.REACT_APP_AGORA_APP_ID || '',
         AGORA_CHANNEL: config.clientConfig?.REACT_APP_AGORA_CHANNEL || 'onboarding_channel',
         
+        // Server-side Agora Configuration (for reference - these are server-only)
+        AGORA_CUSTOMER_ID: '', // Server-only, not editable in client
+        AGORA_CUSTOMER_SECRET: '', // Server-only, not editable in client
+        AGORA_API_BASE_URL: 'https://api.agora.io/api/conversational-ai-agent/v2',
+        
         // Feature Flags
         ENABLE_RTM: config.clientConfig?.REACT_APP_ENABLE_RTM || true,
         ENABLE_RTC_VIDEO: config.clientConfig?.REACT_APP_ENABLE_RTC_VIDEO || true,
         ENABLE_RTC_AUDIO: config.clientConfig?.REACT_APP_ENABLE_RTC_AUDIO || true,
         AVATAR_ENABLED: config.clientConfig?.REACT_APP_AVATAR_ENABLED || false,
         AGORA_FALLBACK_ENABLED: config.clientConfig?.REACT_APP_AGORA_FALLBACK_ENABLED || true,
+        
+        // Additional Feature Flags
+        ENABLE_VOICE_INPUT: config.enableVoiceInput !== undefined ? config.enableVoiceInput : true,
+        ENABLE_TEXT_INPUT: config.enableTextInput !== undefined ? config.enableTextInput : true,
+        ENABLE_AVATAR_DISPLAY: config.enableAvatarDisplay !== undefined ? config.enableAvatarDisplay : false,
+        ENABLE_CONVERSATION_LOGGING: false,
+        ENABLE_USER_ANALYTICS: false,
+        ENABLE_PERFORMANCE_METRICS: false,
+        ENABLE_AI_AVATAR: false,
         
         // TTS Settings
         TTS_VENDOR: config.clientConfig?.REACT_APP_TTS_VENDOR || 'microsoft',
@@ -81,7 +95,38 @@ const Settings = ({ config, onBack }) => {
         
         // Bot Settings
         BOT_NAME: config.botName || 'Welcome Bot',
-        BOT_PERSONALITY: config.botPersonality || 'friendly and helpful'
+        BOT_PERSONALITY: config.botPersonality || 'friendly and helpful',
+        
+        // API URLs and Endpoints
+        OPENAI_API_URL: 'https://api.openai.com/v1/chat/completions',
+        OPENAI_API_KEY: '', // Server-only, not editable in client
+        OPENAI_MODEL: 'gpt-4o-mini',
+        OPENAI_MAX_TOKENS: '1000',
+        OPENAI_TEMPERATURE: '0.7',
+        
+        // Avatar Configuration
+        AVATAR_VENDOR: 'agora',
+        AVATAR_API_KEY: '',
+        AVATAR_ID: '',
+        AVATAR_RTC_UID: '8888',
+        AVATAR_IMAGE_URL: config.avatarImageUrl || '',
+        
+        // Onboarding Configuration
+        ONBOARDING_FORM_FIELDS: (config.onboardingFields || ['name', 'birthday', 'interests', 'bio', 'experienceLevel']).join(','),
+        REQUIRED_FIELDS: (config.requiredFields || ['name']).join(','),
+        OPTIONAL_FIELDS: (config.optionalFields || ['birthday', 'interests', 'bio', 'experienceLevel', 'location', 'phone', 'email', 'website', 'socialHandles']).join(','),
+        
+        // Platform Features
+        ENABLE_PLATFORM_OVERVIEW: true,
+        ENABLE_ONBOARDING_FORM: true,
+        ENABLE_ADDITIONAL_CONVERSATION: true,
+        COLLECT_USER_PREFERENCES: true,
+        COLLECT_SKILL_ASSESSMENT: true,
+        COLLECT_CONVERSATION_ANALYTICS: false,
+        
+        // Development Settings
+        NODE_ENV: 'development',
+        PORT: '3000'
       });
     }
   }, [config]);
@@ -94,7 +139,7 @@ const Settings = ({ config, onBack }) => {
       
       // Update window variables for immediate use
       Object.entries(settings).forEach(([key, value]) => {
-        if (key.startsWith('REACT_APP_') || key.startsWith('AGORA_') || key.startsWith('ENABLE_') || key.startsWith('AVATAR_') || key.startsWith('TTS_') || key.startsWith('ASR_') || key.startsWith('BOT_') || key.startsWith('MICROSOFT_') || key.startsWith('ELEVENLABS_') || key.startsWith('CARTESIA_') || key.startsWith('OPENAI_') || key.startsWith('HUME_') || key.startsWith('DEEPGRAM_')) {
+        if (key.startsWith('REACT_APP_') || key.startsWith('AGORA_') || key.startsWith('ENABLE_') || key.startsWith('AVATAR_') || key.startsWith('TTS_') || key.startsWith('ASR_') || key.startsWith('BOT_') || key.startsWith('MICROSOFT_') || key.startsWith('ELEVENLABS_') || key.startsWith('CARTESIA_') || key.startsWith('OPENAI_') || key.startsWith('HUME_') || key.startsWith('DEEPGRAM_') || key.startsWith('COLLECT_') || key.startsWith('ONBOARDING_') || key.startsWith('REQUIRED_') || key.startsWith('OPTIONAL_') || key === 'NODE_ENV' || key === 'PORT') {
           window[key] = value;
         }
       });
@@ -110,18 +155,115 @@ const Settings = ({ config, onBack }) => {
 
   const handleReset = () => {
     if (config) {
+      // Reset to the same comprehensive settings as in useEffect
       setSettings({
+        // Agora Settings
         AGORA_APP_ID: config.clientConfig?.REACT_APP_AGORA_APP_ID || '',
         AGORA_CHANNEL: config.clientConfig?.REACT_APP_AGORA_CHANNEL || 'onboarding_channel',
+        
+        // Server-side Agora Configuration (for reference - these are server-only)
+        AGORA_CUSTOMER_ID: '',
+        AGORA_CUSTOMER_SECRET: '',
+        AGORA_API_BASE_URL: 'https://api.agora.io/api/conversational-ai-agent/v2',
+        
+        // Feature Flags
         ENABLE_RTM: config.clientConfig?.REACT_APP_ENABLE_RTM || true,
         ENABLE_RTC_VIDEO: config.clientConfig?.REACT_APP_ENABLE_RTC_VIDEO || true,
         ENABLE_RTC_AUDIO: config.clientConfig?.REACT_APP_ENABLE_RTC_AUDIO || true,
         AVATAR_ENABLED: config.clientConfig?.REACT_APP_AVATAR_ENABLED || false,
         AGORA_FALLBACK_ENABLED: config.clientConfig?.REACT_APP_AGORA_FALLBACK_ENABLED || true,
+        
+        // Additional Feature Flags
+        ENABLE_VOICE_INPUT: config.enableVoiceInput !== undefined ? config.enableVoiceInput : true,
+        ENABLE_TEXT_INPUT: config.enableTextInput !== undefined ? config.enableTextInput : true,
+        ENABLE_AVATAR_DISPLAY: config.enableAvatarDisplay !== undefined ? config.enableAvatarDisplay : false,
+        ENABLE_CONVERSATION_LOGGING: false,
+        ENABLE_USER_ANALYTICS: false,
+        ENABLE_PERFORMANCE_METRICS: false,
+        ENABLE_AI_AVATAR: false,
+        
+        // TTS Settings
         TTS_VENDOR: config.clientConfig?.REACT_APP_TTS_VENDOR || 'microsoft',
+        
+        // Microsoft TTS
+        MICROSOFT_TTS_API_KEY: config.microsoftTTS?.key || '',
+        MICROSOFT_TTS_REGION: config.microsoftTTS?.region || 'eastus',
+        MICROSOFT_TTS_VOICE: config.microsoftTTS?.voice || 'en-US-AvaMultilingualNeural',
+        MICROSOFT_TTS_RATE: config.microsoftTTS?.rate || '1.0',
+        MICROSOFT_TTS_VOLUME: config.microsoftTTS?.volume || '1.0',
+        
+        // ElevenLabs TTS
+        ELEVENLABS_TTS_API_KEY: config.elevenlabsTTS?.key || '',
+        ELEVENLABS_TTS_VOICE_ID: config.elevenlabsTTS?.voiceId || '',
+        ELEVENLABS_TTS_MODEL: config.elevenlabsTTS?.model || 'eleven_monolingual_v1',
+        ELEVENLABS_TTS_STABILITY: config.elevenlabsTTS?.stability || '0.5',
+        ELEVENLABS_TTS_SIMILARITY_BOOST: config.elevenlabsTTS?.similarityBoost || '0.75',
+        
+        // Cartesia TTS
+        CARTESIA_TTS_API_KEY: config.cartesiaTTS?.key || '',
+        CARTESIA_TTS_VOICE_ID: config.cartesiaTTS?.voiceId || '',
+        CARTESIA_TTS_MODEL: config.cartesiaTTS?.model || 'sonic-2',
+        
+        // OpenAI TTS
+        OPENAI_TTS_VOICE: config.openaiTTS?.voice || 'alloy',
+        OPENAI_TTS_SPEED: config.openaiTTS?.speed || '1.0',
+        
+        // Hume AI TTS
+        HUME_TTS_API_KEY: config.humeTTS?.key || '',
+        HUME_TTS_VOICE_ID: config.humeTTS?.voiceId || '',
+        HUME_TTS_SPEED: config.humeTTS?.speed || '1.0',
+        
+        // ASR Settings
         ASR_VENDOR: config.clientConfig?.REACT_APP_ASR_VENDOR || 'agora',
+        
+        // Agora ASR
+        AGORA_ASR_LANGUAGE: config.agoraASR?.language || 'en-US',
+        AGORA_ASR_MODEL: config.agoraASR?.model || 'base',
+        
+        // Microsoft ASR
+        MICROSOFT_ASR_API_KEY: config.microsoftASR?.key || '',
+        MICROSOFT_ASR_REGION: config.microsoftASR?.region || 'eastus',
+        MICROSOFT_ASR_LANGUAGE: config.microsoftASR?.language || 'en-US',
+        
+        // Deepgram ASR
+        DEEPGRAM_ASR_API_KEY: config.deepgramASR?.key || '',
+        DEEPGRAM_ASR_MODEL: config.deepgramASR?.model || 'nova-2',
+        DEEPGRAM_ASR_LANGUAGE: config.deepgramASR?.language || 'en-US',
+        
+        // Bot Settings
         BOT_NAME: config.botName || 'Welcome Bot',
-        BOT_PERSONALITY: config.botPersonality || 'friendly and helpful'
+        BOT_PERSONALITY: config.botPersonality || 'friendly and helpful',
+        
+        // API URLs and Endpoints
+        OPENAI_API_URL: 'https://api.openai.com/v1/chat/completions',
+        OPENAI_API_KEY: '',
+        OPENAI_MODEL: 'gpt-4o-mini',
+        OPENAI_MAX_TOKENS: '1000',
+        OPENAI_TEMPERATURE: '0.7',
+        
+        // Avatar Configuration
+        AVATAR_VENDOR: 'agora',
+        AVATAR_API_KEY: '',
+        AVATAR_ID: '',
+        AVATAR_RTC_UID: '8888',
+        AVATAR_IMAGE_URL: config.avatarImageUrl || '',
+        
+        // Onboarding Configuration
+        ONBOARDING_FORM_FIELDS: (config.onboardingFields || ['name', 'birthday', 'interests', 'bio', 'experienceLevel']).join(','),
+        REQUIRED_FIELDS: (config.requiredFields || ['name']).join(','),
+        OPTIONAL_FIELDS: (config.optionalFields || ['birthday', 'interests', 'bio', 'experienceLevel', 'location', 'phone', 'email', 'website', 'socialHandles']).join(','),
+        
+        // Platform Features
+        ENABLE_PLATFORM_OVERVIEW: true,
+        ENABLE_ONBOARDING_FORM: true,
+        ENABLE_ADDITIONAL_CONVERSATION: true,
+        COLLECT_USER_PREFERENCES: true,
+        COLLECT_SKILL_ASSESSMENT: true,
+        COLLECT_CONVERSATION_ANALYTICS: false,
+        
+        // Development Settings
+        NODE_ENV: 'development',
+        PORT: '3000'
       });
       toast.success('Settings reset to defaults');
     }
@@ -615,7 +757,7 @@ const Settings = ({ config, onBack }) => {
         </div>
 
         {/* Settings Sections */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
           {/* Agora Configuration */}
           <div className="bg-white rounded-lg shadow-md p-6">
             <h2 className="text-xl font-semibold text-gray-900 mb-4">Agora Configuration</h2>
@@ -625,7 +767,7 @@ const Settings = ({ config, onBack }) => {
                   App ID
                 </label>
                 <input
-                  type="text"
+                  type="password"
                   value={settings.AGORA_APP_ID || ''}
                   onChange={(e) => handleInputChange('AGORA_APP_ID', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -757,6 +899,300 @@ const Settings = ({ config, onBack }) => {
                   rows={3}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Describe bot personality"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Server Configuration */}
+          <div className="bg-white rounded-lg shadow-md p-6">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">Server Configuration</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Agora Customer ID
+                </label>
+                <input
+                  type="password"
+                  value={settings.AGORA_CUSTOMER_ID || ''}
+                  onChange={(e) => handleInputChange('AGORA_CUSTOMER_ID', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Enter Agora Customer ID"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Agora Customer Secret
+                </label>
+                <input
+                  type="password"
+                  value={settings.AGORA_CUSTOMER_SECRET || ''}
+                  onChange={(e) => handleInputChange('AGORA_CUSTOMER_SECRET', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Enter Agora Customer Secret"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Agora API Base URL
+                </label>
+                <input
+                  type="text"
+                  value={settings.AGORA_API_BASE_URL || ''}
+                  onChange={(e) => handleInputChange('AGORA_API_BASE_URL', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="https://api.agora.io/api/conversational-ai-agent/v2"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* OpenAI Configuration */}
+          <div className="bg-white rounded-lg shadow-md p-6">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">OpenAI Configuration</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  API Key
+                </label>
+                <input
+                  type="password"
+                  value={settings.OPENAI_API_KEY || ''}
+                  onChange={(e) => handleInputChange('OPENAI_API_KEY', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Enter OpenAI API Key"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  API URL
+                </label>
+                <input
+                  type="text"
+                  value={settings.OPENAI_API_URL || ''}
+                  onChange={(e) => handleInputChange('OPENAI_API_URL', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="https://api.openai.com/v1/chat/completions"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Model
+                </label>
+                <select
+                  value={settings.OPENAI_MODEL || 'gpt-4o-mini'}
+                  onChange={(e) => handleInputChange('OPENAI_MODEL', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="gpt-4o-mini">GPT-4o Mini</option>
+                  <option value="gpt-4o">GPT-4o</option>
+                  <option value="gpt-4-turbo">GPT-4 Turbo</option>
+                  <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Max Tokens
+                  </label>
+                  <input
+                    type="number"
+                    value={settings.OPENAI_MAX_TOKENS || ''}
+                    onChange={(e) => handleInputChange('OPENAI_MAX_TOKENS', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="1000"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Temperature
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="2"
+                    value={settings.OPENAI_TEMPERATURE || ''}
+                    onChange={(e) => handleInputChange('OPENAI_TEMPERATURE', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="0.7"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Avatar Configuration */}
+          <div className="bg-white rounded-lg shadow-md p-6">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">Avatar Configuration</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Avatar Vendor
+                </label>
+                <select
+                  value={settings.AVATAR_VENDOR || 'agora'}
+                  onChange={(e) => handleInputChange('AVATAR_VENDOR', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="agora">Agora</option>
+                  <option value="custom">Custom</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Avatar API Key
+                </label>
+                <input
+                  type="password"
+                  value={settings.AVATAR_API_KEY || ''}
+                  onChange={(e) => handleInputChange('AVATAR_API_KEY', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Enter Avatar API Key"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Avatar ID
+                </label>
+                <input
+                  type="text"
+                  value={settings.AVATAR_ID || ''}
+                  onChange={(e) => handleInputChange('AVATAR_ID', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Enter Avatar ID"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Avatar RTC UID
+                </label>
+                <input
+                  type="text"
+                  value={settings.AVATAR_RTC_UID || ''}
+                  onChange={(e) => handleInputChange('AVATAR_RTC_UID', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="8888"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Avatar Image URL
+                </label>
+                <input
+                  type="url"
+                  value={settings.AVATAR_IMAGE_URL || ''}
+                  onChange={(e) => handleInputChange('AVATAR_IMAGE_URL', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="https://example.com/avatar.png"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Onboarding Configuration */}
+          <div className="bg-white rounded-lg shadow-md p-6">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">Onboarding Configuration</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Form Fields (comma-separated)
+                </label>
+                <input
+                  type="text"
+                  value={settings.ONBOARDING_FORM_FIELDS || ''}
+                  onChange={(e) => handleInputChange('ONBOARDING_FORM_FIELDS', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="name,birthday,interests,bio,experienceLevel"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Required Fields (comma-separated)
+                </label>
+                <input
+                  type="text"
+                  value={settings.REQUIRED_FIELDS || ''}
+                  onChange={(e) => handleInputChange('REQUIRED_FIELDS', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="name"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Optional Fields (comma-separated)
+                </label>
+                <input
+                  type="text"
+                  value={settings.OPTIONAL_FIELDS || ''}
+                  onChange={(e) => handleInputChange('OPTIONAL_FIELDS', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="birthday,interests,bio,experienceLevel,location,phone,email"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Platform Features */}
+          <div className="bg-white rounded-lg shadow-md p-6">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">Platform Features</h2>
+            <div className="space-y-4">
+              {[
+                { key: 'ENABLE_PLATFORM_OVERVIEW', label: 'Enable Platform Overview' },
+                { key: 'ENABLE_ONBOARDING_FORM', label: 'Enable Onboarding Form' },
+                { key: 'ENABLE_ADDITIONAL_CONVERSATION', label: 'Enable Additional Conversation' },
+                { key: 'COLLECT_USER_PREFERENCES', label: 'Collect User Preferences' },
+                { key: 'COLLECT_SKILL_ASSESSMENT', label: 'Collect Skill Assessment' },
+                { key: 'COLLECT_CONVERSATION_ANALYTICS', label: 'Collect Conversation Analytics' },
+                { key: 'ENABLE_VOICE_INPUT', label: 'Enable Voice Input' },
+                { key: 'ENABLE_TEXT_INPUT', label: 'Enable Text Input' },
+                { key: 'ENABLE_AVATAR_DISPLAY', label: 'Enable Avatar Display' },
+                { key: 'ENABLE_CONVERSATION_LOGGING', label: 'Enable Conversation Logging' },
+                { key: 'ENABLE_USER_ANALYTICS', label: 'Enable User Analytics' },
+                { key: 'ENABLE_PERFORMANCE_METRICS', label: 'Enable Performance Metrics' },
+                { key: 'ENABLE_AI_AVATAR', label: 'Enable AI Avatar' }
+              ].map(({ key, label }) => (
+                <div key={key} className="flex items-center justify-between">
+                  <label className="text-sm font-medium text-gray-700">{label}</label>
+                  <input
+                    type="checkbox"
+                    checked={settings[key] || false}
+                    onChange={(e) => handleInputChange(key, e.target.checked)}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Development Settings */}
+          <div className="bg-white rounded-lg shadow-md p-6">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">Development Settings</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Node Environment
+                </label>
+                <select
+                  value={settings.NODE_ENV || 'development'}
+                  onChange={(e) => handleInputChange('NODE_ENV', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="development">Development</option>
+                  <option value="production">Production</option>
+                  <option value="test">Test</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Port
+                </label>
+                <input
+                  type="number"
+                  value={settings.PORT || ''}
+                  onChange={(e) => handleInputChange('PORT', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="3000"
                 />
               </div>
             </div>

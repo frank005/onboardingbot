@@ -12,10 +12,9 @@ import SubtitleDisplay from './SubtitleDisplay';
 import AgoraSetup from './AgoraSetup';
 import CameraPreview from './CameraPreview';
 import { 
-  wireConvoToProfile, 
-  cleanAssistantMessage,
-  parseProfileUpdate
+  wireConvoToProfile
 } from '../utils/profile-sync';
+import { normalizeAssistant } from '../utils/normalizeAssistant';
 
 const ConversationInterface = ({ 
   config, 
@@ -35,18 +34,14 @@ const ConversationInterface = ({
   const [isVoiceEnabled, setIsVoiceEnabled] = useState(true);
   const [showProfile, setShowProfile] = useState(false);
   const [profileUpdates, setProfileUpdates] = useState([]);
-  const [processedMessageIds, setProcessedMessageIds] = useState(new Set());
-  const [lastProcessedMessageCount, setLastProcessedMessageCount] = useState(0);
+  const lastProcessedMessageCountRef = useRef(0);
   const [useAgora, setUseAgora] = useState(false);
   const [agoraAgentId, setAgoraAgentId] = useState(null);
-  const [agoraChannelName, setAgoraChannelName] = useState(null);
   const [agoraConnected, setAgoraConnected] = useState(false);
   const [agoraError, setAgoraError] = useState(null);
-  const [transcription, setTranscription] = useState(null);
   const [showAgoraSetup, setShowAgoraSetup] = useState(false);
   const [cameraEnabled, setCameraEnabled] = useState(false);
   const [cameraPosition, setCameraPosition] = useState({ x: 20, y: 20 });
-  const [userTranscription, setUserTranscription] = useState(null);
   const [audioEnabled, setAudioEnabled] = useState(true);
 
   const messagesEndRef = useRef(null);
@@ -131,9 +126,25 @@ const ConversationInterface = ({
     try {
       const userId = user?.id || `user_${Date.now()}`;
       
-      // Reset processed message IDs and count for new conversation
-      setProcessedMessageIds(new Set());
-      setLastProcessedMessageCount(0);
+      console.log('🔄 Starting new conversation - cleaning up previous state');
+      
+      // Clean up any existing Agora connection first
+      if (agoraConnected) {
+        console.log('🔄 Disconnecting from previous Agora connection');
+        await agoraService.disconnect();
+        setAgoraConnected(false);
+        setAgoraAgentId(null);
+        
+        // Small delay to ensure cleanup is complete
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      
+      // Reset processed message count for new conversation
+      lastProcessedMessageCountRef.current = 0;
+      processedMessages.current.clear();
+      
+      // Clear any existing live/temp messages and profile updates
+      setProfileUpdates([]);
       
       // console.log('🔍 Starting conversation with userId:', userId);
       
@@ -257,139 +268,80 @@ const ConversationInterface = ({
         }
       }
       
-      // Subscribe to transcription updates (both user and assistant) BEFORE subscribing to messages
-      // Use the original working event system instead of the callback
-      agoraService.conversationalAI.covSubRenderController.on('transcription-updated', async (chatHistory) => {
-        try {
-          console.log('🎤 TRANSCRIPTION_UPDATED event received with', chatHistory?.length || 0, 'messages');
-          console.log('🎤 Full chatHistory:', chatHistory);
+      // Subscribe to transcription updates - SINGLE SOURCE OF TRUTH
+      // Remove any existing listeners first to prevent duplicates
+      agoraService.conversationalAI.covSubRenderController.removeAllListeners('transcription-updated');
+      
+      const transcriptionHandler = async (chatHistory) => {
+        const eventId = Math.random().toString(36).substr(2, 9);
+        const seenDigests = new Set();
         
-        if (chatHistory && chatHistory.length > 0) {
-          console.log('🔍 Chat history length:', chatHistory.length, 'Last processed count:', lastProcessedMessageCount);
-          
-          // Only process new messages since the last event
-          const newMessages = chatHistory.slice(lastProcessedMessageCount);
-          console.log('🔍 Processing', newMessages.length, 'new messages');
-          
-          for (const message of newMessages) {
-            if (message && message.data) {
-              const messageId = message.data.messageId || message.data.message_id || message.id;
-              
-              // Skip if we've already processed this exact message ID (extra safety)
-              if (processedMessageIds.has(messageId)) {
-                console.log('🔄 Skipping already processed message ID:', messageId);
-                continue;
-              }
-              
-              console.log('📝 Processing NEW message data:', {
-                text: message.data.text,
-                content: message.data.content,
-                speaker: message.data.speaker,
-                isFinal: message.data.isFinal,
-                turnId: message.data.turn_id || message.data.turnId,
-                messageId: messageId
-              });
-              
-              // Only process messages with actual content
-              const fullText = message.data.text || message.data.content || '';
-              if (!fullText) continue;
+        try {
+          console.log(`🎤 [${eventId}] TRANSCRIPTION_UPDATED event received with`, chatHistory?.length || 0, 'messages');
+        
+          if (chatHistory && chatHistory.length > 0) {
+            console.log(`🔍 [${eventId}] Chat history length:`, chatHistory.length, 'Last processed count:', lastProcessedMessageCountRef.current);
             
-              // Determine if this is a user or assistant message based on the speaker
-              const isUserMessage = message.data.speaker && (
-                message.data.speaker.toLowerCase().includes('user') || 
-                message.data.speaker.toLowerCase().includes('user (') ||
-                message.data.speaker.toLowerCase().includes('user(') ||
-                message.data.speaker.toLowerCase().includes('user ') ||
-                message.data.speaker.toLowerCase().startsWith('user')
-              );
-              const isAssistantMessage = message.data.speaker && (
-                message.data.speaker.toLowerCase().includes('assistant') || 
-                message.data.speaker.toLowerCase().includes('assistant (')
-              );
-              
-              // Debug logging for speaker detection
-              // console.log('🔍 Speaker detection debug:', {
-              //   speaker: message.data.speaker,
-              //   speakerLower: message.data.speaker?.toLowerCase(),
-              //   isUserMessage,
-              //   isAssistantMessage,
-              //   includesUser: message.data.speaker?.toLowerCase().includes('user'),
-              //   includesUserParen: message.data.speaker?.toLowerCase().includes('user (')
-              // });
-              
-              // Debug logging for message processing
-              // console.log('🔍 Message processing debug:', {
-              //   speaker: message.data.speaker,
-              //   isUserMessage,
-              //   isAssistantMessage,
-              //   fullText: fullText.substring(0, 50) + '...',
-              //   isFinal: message.data.isFinal || message.data.final,
-              //   userExists: !!user?.id
-              // });
+            // Only process new messages since the last event
+            const newMessages = chatHistory.slice(lastProcessedMessageCountRef.current);
+            console.log(`🔍 [${eventId}] Processing`, newMessages.length, 'new messages');
             
-              // Process all messages (both final and non-final) like the demo
-              if (isUserMessage || isAssistantMessage) {
-                // Clean assistant messages to remove markers and brackets
-                const cleanedContent = isAssistantMessage ? cleanAssistantMessage(fullText) : fullText;
+            // If no new messages, skip processing
+            if (newMessages.length === 0) {
+              console.log(`🔄 [${eventId}] No new messages to process, skipping`);
+              return;
+            }
+            
+            // Process messages first, then update the count to prevent race conditions
+            for (const message of newMessages) {
+              if (message && message.data) {
+                const messageId = message.data.messageId || message.data.message_id || message.id;
+                const isFinal = message.data.isFinal || message.data.final || false;
+                const fullText = message.data.text || message.data.content || '';
                 
-                const messageObj = {
-                  id: message.data.messageId || message.id || `msg-${Date.now()}`,
-                  role: isUserMessage ? 'user' : 'assistant',
-                  content: cleanedContent,
-                  timestamp: new Date().toLocaleTimeString(),
-                  source: 'agora-rtm',
-                  isFinal: message.data.isFinal || message.data.final || false,
-                  speaker: message.data.speaker,
-                  turnId: message.data.turn_id || message.data.turnId,
-                  messageId: message.data.messageId || message.data.message_id || '',
-                  isTemp: !(message.data.isFinal || message.data.final)
-                };
-              
-
-              
-                // Profile extraction using direct parsing
-                if (isAssistantMessage && messageObj.isFinal) {
-                  try {
-                    // Parse profile update directly
-                    const parsed = parseProfileUpdate(fullText, null);
-                    
-                    if (parsed && parsed.fieldName && parsed.value) {
-                      console.log('🔍 Profile update detected:', parsed);
-                      
-                      // Update the user profile directly
-                      if (onUserUpdate && user?.id) {
-                        // Call updateUser with just the profile field update
-                        onUserUpdate({
-                          [parsed.fieldName]: parsed.value
-                        });
-                      }
-                      
-                      // Update UI state
-                      setProfileUpdates(prev => [...prev, {
-                        field: parsed.fieldName,
-                        value: parsed.value,
-                        timestamp: Date.now(),
-                        type: 'detected-info'
-                      }]);
-                      
-                      console.log('✅ Profile updated:', parsed.fieldName, '=', parsed.value);
-                    } else {
-                      console.log('🔍 No valid profile update parsed from:', fullText.substring(0, 100));
-                    }
-                  } catch (error) {
-                    console.error('❌ Error parsing profile update:', error);
-                    // Don't let profile parsing errors break the conversation
-                  }
+                // Only process messages with actual content
+                if (!fullText) continue;
+                
+                // Create digest for deduplication
+                const digest = `${message.data.speaker}|${isFinal}|${fullText}`;
+                if (seenDigests.has(digest)) {
+                  console.log('🔄 Skipping duplicate message digest:', digest.substring(0, 50) + '...');
+                  continue;
                 }
-              
-                // Update conversation state with proper deduplication
-                setConversation(prev => {
-                  try {
-                    console.log('🔄 Updating conversation state. Previous messages:', prev?.messages?.length || 0);
-                    console.log('🔄 New message to add:', messageObj);
+                seenDigests.add(digest);
                 
+                // Determine if this is a user or assistant message
+                const isUserMessage = message.data.speaker && (
+                  message.data.speaker.toLowerCase().includes('user') || 
+                  message.data.speaker.toLowerCase().includes('user (') ||
+                  message.data.speaker.toLowerCase().includes('user(') ||
+                  message.data.speaker.toLowerCase().includes('user ') ||
+                  message.data.speaker.toLowerCase().startsWith('user')
+                );
+                const isAssistantMessage = message.data.speaker && (
+                  message.data.speaker.toLowerCase().includes('assistant') || 
+                  message.data.speaker.toLowerCase().includes('assistant (')
+                );
+                
+                // Process user messages (both final and partial)
+                if (isUserMessage) {
+                  const messageObj = {
+                    id: messageId || `msg-${Date.now()}`,
+                    role: 'user',
+                    content: fullText,
+                    rawContent: fullText,
+                    timestamp: new Date().toLocaleTimeString(),
+                    source: 'agora-rtm',
+                    isFinal: isFinal,
+                    speaker: message.data.speaker,
+                    turnId: message.data.turn_id || message.data.turnId,
+                    messageId: messageId,
+                    isTemp: !isFinal
+                  };
+                  
+                  // Update conversation state for user messages
+                  setConversation(prev => {
                     if (!prev) {
-                      console.log('🔄 Creating new conversation with message');
                       return {
                         id: `conversation-${Date.now()}`,
                         messages: [messageObj],
@@ -399,179 +351,139 @@ const ConversationInterface = ({
                       };
                     }
                     
-                    // Check for duplicates - prevent exact duplicates for final messages and user messages
+                    // Check for duplicates
                     const isDuplicate = prev.messages.some(m => 
-                      (m.messageId && m.messageId === messageObj.messageId) || // Exact messageId match
-                      (messageObj.isFinal && 
-                       m.content === messageObj.content &&
-                       m.speaker === messageObj.speaker &&
-                       m.source === 'agora-rtm' &&
-                       m.isFinal) || // Only prevent duplicates for final messages with same content
-                      (messageObj.role === 'user' && 
-                       m.content === messageObj.content &&
-                       (Math.abs(new Date(m.timestamp) - new Date()) < 10000 || 
-                        m.source === 'agora-rtm' || 
-                        m.speaker?.toLowerCase().includes('user'))) || // Prevent duplicate user messages within 10 seconds OR from RTM OR if previous message is from user
-                      (messageObj.role === 'assistant' && 
-                       messageObj.isFinal &&
-                       m.content === messageObj.content &&
-                       m.speaker === messageObj.speaker &&
-                       m.source === 'agora-rtm' &&
-                       m.isFinal) // Prevent duplicate final assistant messages
+                      m.messageId === messageObj.messageId ||
+                      (m.role === 'user' && m.rawContent === messageObj.rawContent && m.speaker === messageObj.speaker)
                     );
                     
                     if (isDuplicate) {
-                      console.log('🔄 Skipping duplicate message:', messageObj.content.substring(0, 50) + '...', 'turnId:', messageObj.turnId, 'messageId:', messageObj.messageId);
+                      console.log('🔄 Skipping duplicate user message:', messageObj.content.substring(0, 50) + '...');
                       return prev;
                     }
-                
-                console.log('🔄 Adding new message to conversation. Total messages will be:', prev.messages.length + 1);
-                
-                    // For non-final assistant messages, replace any existing non-final message from the same turn
-                    if (!messageObj.isFinal && messageObj.role === 'assistant') {
-                      console.log('🔍 Looking for existing non-final assistant message to replace...');
-                      console.log('🔍 Current turnId:', messageObj.turnId);
-                      console.log('🔍 Existing messages:', prev.messages.map(m => ({ 
-                        role: m.role, 
-                        isFinal: m.isFinal, 
-                        turnId: m.turnId, 
-                        content: m.content?.substring(0, 30) + '...' 
-                      })));
-                      
-                      const existingMessageIndex = prev.messages.findIndex(m => 
-                        m.role === 'assistant' && 
-                        !m.isFinal && 
-                        m.turnId === messageObj.turnId
-                      );
-                      
-                      console.log('🔍 Found existing message at index:', existingMessageIndex);
-                      
-                      if (existingMessageIndex >= 0) {
-                        console.log('🔄 Replacing existing non-final assistant message from the same turn');
-                        // Replace the existing non-final assistant message from the same turn
-                        const updatedMessages = [...prev.messages];
-                        updatedMessages[existingMessageIndex] = {
-                          ...messageObj,
-                          timestamp: '(live)',
-                          isTemp: true
-                        };
-                        return {
-                          ...prev,
-                          messages: updatedMessages
-                        };
-                      } else {
-                        console.log('🔍 No existing non-final message found, will add as new message');
-                      }
-                    }
                     
-                    // For final assistant messages, replace any existing non-final message from the same turn
-                    if (messageObj.isFinal && messageObj.role === 'assistant') {
-                      const existingMessageIndex = prev.messages.findIndex(m => 
-                        m.role === 'assistant' && 
-                        !m.isFinal && 
-                        m.turnId === messageObj.turnId
-                      );
-                      
-                      if (existingMessageIndex >= 0) {
-                        // Replace the non-final message with the final one
-                        const updatedMessages = [...prev.messages];
-                        updatedMessages[existingMessageIndex] = {
-                          ...messageObj,
-                          timestamp: new Date().toLocaleTimeString(),
-                          isTemp: false
-                        };
-                        return {
-                          ...prev,
-                          messages: updatedMessages
-                        };
-                      }
-                    }
-                
-                    // For final messages, always add them
+                    // Handle user message (replace live or add new)
                     if (messageObj.isFinal) {
-                      console.log('✅ Adding final message to conversation:', messageObj.content.substring(0, 50) + '...');
-                      
-                      return {
-                        ...prev,
-                        messages: [...prev.messages, messageObj]
-                      };
-                    } else {
-                      // For non-final messages, update existing temp message or add new one
-                      const tempMessageId = `temp-${messageObj.speaker}`;
-                      const existingTempIndex = prev.messages.findIndex(m => 
-                        m.id === tempMessageId || 
-                        (m.id && m.id.toString().startsWith('temp-') && m.speaker === messageObj.speaker)
+                      const existingLiveIndex = prev.messages.findIndex(m => 
+                        m.role === 'user' && !m.isFinal && (m.turnId === messageObj.turnId || m.isTemp)
                       );
                       
-                      const tempMessage = {
-                        ...messageObj,
-                        id: tempMessageId,
-                        timestamp: '(live)',
-                        isTemp: true
-                      };
-                      
-                      if (existingTempIndex >= 0) {
-                        // Replace existing temp message
-                        const newMessages = [...prev.messages];
-                        newMessages[existingTempIndex] = tempMessage;
-                        return {
-                      ...prev,
-                      messages: newMessages
-                    };
+                      if (existingLiveIndex >= 0) {
+                        const updatedMessages = [...prev.messages];
+                        updatedMessages[existingLiveIndex] = { ...messageObj, isTemp: false };
+                        return { ...prev, messages: updatedMessages };
                       } else {
-                        // Add new temp message
-                        return {
-                          ...prev,
-                          messages: [...prev.messages, tempMessage]
-                        };
+                        return { ...prev, messages: [...prev.messages, messageObj] };
+                      }
+                    } else {
+                      const existingLiveIndex = prev.messages.findIndex(m => 
+                        m.role === 'user' && !m.isFinal && (m.turnId === messageObj.turnId || m.isTemp)
+                      );
+                      
+                      const liveMessage = { ...messageObj, timestamp: '(live)', isTemp: true };
+                      
+                      if (existingLiveIndex >= 0) {
+                        const updatedMessages = [...prev.messages];
+                        updatedMessages[existingLiveIndex] = liveMessage;
+                        return { ...prev, messages: updatedMessages };
+                      } else {
+                        return { ...prev, messages: [...prev.messages, liveMessage] };
                       }
                     }
-                    
-                    // For non-final messages, add them if they're not replacing an existing one
-                    return {
-                      ...prev,
-                      messages: [...prev.messages, messageObj]
-                    };
-                  } catch (error) {
-                    console.error('❌ Error updating conversation state:', error);
-                    // Return previous state to prevent crash
-                    return prev || {
-                      id: `conversation-${Date.now()}`,
-                      messages: [],
-                      createdAt: new Date().toISOString(),
-                      completedTopics: [],
-                      currentTopic: 'platform_overview'
-                    };
-                  }
-                });
+                  });
+                }
                 
-                // Mark this message as processed
-                setProcessedMessageIds(prev => new Set([...prev, messageId]));
+                // Process assistant messages - ONLY FINAL MESSAGES
+                if (isAssistantMessage && isFinal) {
+                  // Normalize assistant message
+                  const normalized = normalizeAssistant(fullText);
+                  
+                  // Update profile if field update detected
+                  if (normalized.fieldUpdate && onUserUpdate && user?.id) {
+                    console.log('🔍 Profile update detected:', normalized.fieldUpdate);
+                    onUserUpdate({ [normalized.fieldUpdate.field]: normalized.fieldUpdate.value });
+                    
+                    setProfileUpdates(prev => [...prev, {
+                      field: normalized.fieldUpdate.field,
+                      value: normalized.fieldUpdate.value,
+                      timestamp: Date.now(),
+                      type: 'detected-info'
+                    }]);
+                  }
+                  
+                  // Only add message if there's visible text
+                  if (normalized.visibleText) {
+                    const messageObj = {
+                      id: messageId || `msg-${Date.now()}`,
+                      role: 'assistant',
+                      content: normalized.visibleText,
+                      rawContent: fullText,
+                      timestamp: new Date().toLocaleTimeString(),
+                      source: 'agora-rtm',
+                      isFinal: isFinal,
+                      speaker: message.data.speaker,
+                      turnId: message.data.turn_id || message.data.turnId,
+                      messageId: messageId,
+                      isTemp: !isFinal
+                    };
+                    
+                    // Update conversation state for assistant messages
+                    setConversation(prev => {
+                      if (!prev) {
+                        return {
+                          id: `conversation-${Date.now()}`,
+                          messages: [messageObj],
+                          createdAt: new Date().toISOString(),
+                          completedTopics: [],
+                          currentTopic: 'platform_overview'
+                        };
+                      }
+                      
+                      // Check for duplicates
+                      const isDuplicate = prev.messages.some(m => 
+                        m.messageId === messageObj.messageId ||
+                        (m.role === 'assistant' && m.rawContent === messageObj.rawContent && m.speaker === messageObj.speaker && m.isFinal === messageObj.isFinal)
+                      );
+                      
+                      if (isDuplicate) {
+                        console.log('🔄 Skipping duplicate assistant message:', messageObj.content.substring(0, 50) + '...');
+                        return prev;
+                      }
+                      
+                      console.log('✅ Adding assistant message:', messageObj.content.substring(0, 50) + '...', 'isFinal:', messageObj.isFinal);
+                      return { ...prev, messages: [...prev.messages, messageObj] };
+                    });
+                  }
+                }
               }
             }
+            
+            // Update the last processed message count after all messages are processed
+            lastProcessedMessageCountRef.current = chatHistory.length;
           }
-          
-          // Update the last processed message count
-          setLastProcessedMessageCount(chatHistory.length);
-        }
         } catch (error) {
           console.error('❌ Error in transcription event handler:', error);
-          // Don't let transcription errors break the conversation
         }
-      });
+      };
       
-      // Subscribe to RTM messages using ConversationalAIAPI AFTER setting up the callback
+      // Add the listener
+      agoraService.conversationalAI.covSubRenderController.on('transcription-updated', transcriptionHandler);
+      
+      // Subscribe to RTM messages using ConversationalAIAPI - this is needed for transcription data
       await agoraService.conversationalAI.subscribeMessage(channelName);
       
-      // Add additional debugging for RTM message handling
       console.log('🔍 RTM subscription completed for channel:', channelName);
       console.log('🔍 onAgentResponse callback is set:', !!agoraService.onAgentResponse);
       console.log('🔍 Waiting for agent responses...');
       
       setAgoraConnected(true);
-      setAgoraChannelName(channelName);
       
       console.log('✅ Successfully connected to Agora RTM');
+      
+      // Return cleanup function for StrictMode
+      return () => {
+        agoraService.conversationalAI.covSubRenderController.removeListener('transcription-updated', transcriptionHandler);
+      };
       
     } catch (error) {
       console.error('❌ Error connecting to Agora RTM:', error);
@@ -579,12 +491,13 @@ const ConversationInterface = ({
     }
   };
 
+  // eslint-disable-next-line no-unused-vars
   const startAgoraConversation = async (userId) => {
     try {
       // Generate unique channel name for each session to allow multiple users
       const baseChannelName = window.REACT_APP_AGORA_CHANNEL || process.env.REACT_APP_AGORA_CHANNEL || "onboarding_channel";
       const channelName = `${baseChannelName}_${userId}_${Date.now()}`;
-      setAgoraChannelName(channelName);
+      // setAgoraChannelName(channelName); // Removed - no longer needed
       
       // Initialize RTC and Signaling clients
       const appId = window.REACT_APP_AGORA_APP_ID || process.env.REACT_APP_AGORA_APP_ID || 'your_agora_app_id';
@@ -637,35 +550,6 @@ const ConversationInterface = ({
   const handleSendMessage = (text) => {
     if (!text.trim()) return;
 
-    // Create user message
-    const userMessage = {
-      id: `user-${Date.now()}`,
-      role: 'user',
-      content: text.trim(),
-      timestamp: new Date().toLocaleTimeString(),
-      source: 'user-input',
-      isFinal: true,
-      speaker: 'User',
-      isTemp: false
-    };
-
-    // Add user message to conversation immediately
-    setConversation(prev => {
-      if (!prev) {
-        return {
-          id: `conversation-${Date.now()}`,
-          messages: [userMessage],
-          createdAt: new Date().toISOString(),
-          completedTopics: [],
-          currentTopic: 'platform_overview'
-        };
-      }
-      return {
-        ...prev,
-        messages: [...prev.messages, userMessage]
-      };
-    });
-
     // Send via Agora RTM if connected
     if (agoraConnected && agoraAgentId) {
       console.log('📤 Sending message via Agora RTM:', text);
@@ -683,6 +567,7 @@ const ConversationInterface = ({
     handleSendMessage(message);
   };
 
+  // eslint-disable-next-line no-unused-vars
   const handleVoiceToggle = () => {
     setIsVoiceEnabled(!isVoiceEnabled);
     toast.success(isVoiceEnabled ? 'Voice disabled' : 'Voice enabled');
@@ -702,10 +587,16 @@ const ConversationInterface = ({
       // Disconnect from Agora
       if (agoraConnected) {
         console.log('🔄 Disconnecting from Agora...');
+        
+        // Remove all event listeners to prevent memory leaks and duplicate processing
+        if (agoraService.conversationalAI?.covSubRenderController) {
+          agoraService.conversationalAI.covSubRenderController.removeAllListeners('transcription-updated');
+          console.log('🧹 Removed all transcription-updated event listeners');
+        }
+        
         await agoraService.disconnect();
         setAgoraConnected(false);
         setAgoraAgentId(null);
-        setAgoraChannelName(null);
       }
       
       // Stop the conversation on the server
@@ -725,10 +616,13 @@ const ConversationInterface = ({
         }
       }
       
-      // Reset conversation state
+      // Reset conversation state completely
       setConversation(null);
       setUseAgora(false);
       setMessage('');
+      setProfileUpdates([]);
+      lastProcessedMessageCountRef.current = 0;
+      processedMessages.current.clear();
       
       toast.success('Conversation stopped');
       console.log('✅ Conversation stopped successfully');
@@ -1095,9 +989,9 @@ const ConversationInterface = ({
                   {/* Subtitle Display */}
                   <SubtitleDisplay
                     isVisible={useAgora && agoraConnected}
-                    transcription={transcription}
+                    transcription=""
                     agentUserId="8888"
-                    userTranscription={userTranscription}
+                    userTranscription=""
                   />
 
                   {/* Agora Setup Modal */}

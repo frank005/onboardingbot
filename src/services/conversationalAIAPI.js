@@ -233,9 +233,11 @@ class CovSubRenderController extends EventHelper {
             }
             
                     // Check if we already have this exact message to prevent duplicates
-        const messageKey = `${message.text}-${message.turn_id}`;
+        // Include isFinal status in the key to allow both live and final versions
+        const isFinal = message.final || message.is_final || false;
+        const messageKey = `${message.text}-${message.turn_id}-${isFinal}`;
         if (this.processedUserMessages.has(messageKey)) {
-            console.log('🔄 Skipping duplicate user message:', message.text);
+            console.log('🔄 Skipping duplicate user message:', message.text, 'isFinal:', isFinal);
             return;
         }
         
@@ -279,7 +281,12 @@ class CovSubRenderController extends EventHelper {
             // 1. They explicitly have final=true, OR
             // 2. turn_status === 1, OR  
             // 3. They have end punctuation and turn_status === 0 (in progress)
-            isFinal = message.is_final === true || message.final === true || message.turn_status === 1;
+            // 4. They contain field markers (these are always final)
+            const hasFieldMarkers = message.text && (
+                message.text.includes('[[field:') || 
+                message.text.includes('[[') && message.text.includes(']]')
+            );
+            isFinal = message.is_final === true || message.final === true || message.turn_status === 1 || hasFieldMarkers;
         }
 
         // Safely format timestamp to avoid "Invalid Date"
@@ -452,6 +459,21 @@ class CovSubRenderController extends EventHelper {
 
         // Check if we already have this message in chat history to prevent duplicates
         const text = pending.message.text || pending.message.content || '';
+        const messageId = pending.message.message_id || pending.message.messageId || '';
+        const turnId = pending.message.turn_id || pending.message.turnId || '';
+        
+        // Create a unique key using messageId (most reliable) or turnId + text
+        const uniqueKey = messageId || `${turnId}:${text.trim()}`;
+        
+        // Check if we've already processed this exact message
+        if (this.processedKeys && this.processedKeys.has(uniqueKey)) {
+            console.log('🔄 Skipping duplicate finalization (exact match):', uniqueKey);
+            // Clear the pending transcription without adding to chat history
+            this.pendingAssistantTranscriptions.delete(agentUserId);
+            return;
+        }
+        
+        // Also check for content-based duplicates
         const existingMessage = this.chatHistory.find(item => 
             item.data && 
             item.data.text === text &&
@@ -464,6 +486,11 @@ class CovSubRenderController extends EventHelper {
             // Clear the pending transcription without adding to chat history
             this.pendingAssistantTranscriptions.delete(agentUserId);
             return;
+        }
+        
+        // Mark this message as processed to prevent future duplicates
+        if (this.processedKeys) {
+            this.processedKeys.set(uniqueKey, Date.now());
         }
 
         // Safely format timestamp for final transcription

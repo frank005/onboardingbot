@@ -16,11 +16,13 @@ export function parseProfileUpdate(text, expectedField = null) {
     return null;
   }
 
-  // Look for marker pattern: [[field:name value:value]]
-  const markerPattern = /\[\[field:(\w+)\s+value:([^\]]+)\]\]/;
-  const match = text.match(markerPattern);
+  // Look for marker pattern: [[field:name value:value]] anywhere in the message
+  const markerPattern = /\[\[field:(\w+)\s+value:([^\]]+)\]\]/g;
+  let match;
+  let bestMatch = null;
   
-  if (match) {
+  // Find all matches and use the first valid one
+  while ((match = markerPattern.exec(text)) !== null) {
     const [, fieldName, value] = match;
     const cleanValue = value.trim();
     
@@ -28,34 +30,55 @@ export function parseProfileUpdate(text, expectedField = null) {
     const validFields = ['name', 'birthday', 'interests', 'bio', 'experience'];
     if (!validFields.includes(fieldName)) {
       console.warn('⚠️ Invalid field name in marker:', fieldName);
-      return null;
+      continue;
     }
     
     // Validate value is not empty
     if (!cleanValue || cleanValue === 'null' || cleanValue === 'undefined') {
       console.warn('⚠️ Empty value in marker for field:', fieldName);
-      return null;
+      continue;
     }
     
-    return {
+    bestMatch = {
       fieldName,
       value: cleanValue,
       source: 'marker'
     };
+    break; // Use the first valid match
   }
   
-  // Fallback: look for bracket pattern [value] at start of message
-  const bracketPattern = /^\[([^\]]+)\]/;
-  const bracketMatch = text.match(bracketPattern);
+  if (bestMatch) {
+    return bestMatch;
+  }
   
-  if (bracketMatch && expectedField) {
+  // Fallback: look for bracket pattern [value] anywhere in the message
+  const bracketPattern = /\[([^\]]+)\]/g;
+  let bracketMatch;
+  
+  while ((bracketMatch = bracketPattern.exec(text)) !== null) {
     const value = bracketMatch[1].trim();
     if (value && value !== 'null' && value !== 'undefined') {
-      return {
-        fieldName: expectedField,
-        value: value,
-        source: 'bracket'
-      };
+      // If we have an expected field, use it; otherwise try to infer from context
+      if (expectedField) {
+        return {
+          fieldName: expectedField,
+          value: value,
+          source: 'bracket'
+        };
+      }
+      
+      // Try to infer field from context or use a default
+      // This is a fallback for when the LLM doesn't follow the exact format
+      const validFields = ['name', 'birthday', 'interests', 'bio', 'experience'];
+      for (const field of validFields) {
+        if (text.toLowerCase().includes(field.toLowerCase())) {
+          return {
+            fieldName: field,
+            value: value,
+            source: 'bracket-inferred'
+          };
+        }
+      }
     }
   }
   
@@ -69,17 +92,39 @@ export function parseProfileUpdate(text, expectedField = null) {
  */
 export function cleanAssistantMessage(text) {
   if (!text || typeof text !== 'string') {
-    return text;
+    return text || '';
   }
   
-  // Remove marker pattern: [[field:name value:value]]
+  // Remove marker pattern: [[field:name value:value]] from anywhere in the message
   let cleaned = text.replace(/\[\[field:\w+\s+value:[^\]]+\]\]/g, '');
   
-  // Remove bracket pattern at start: [value]
-  cleaned = cleaned.replace(/^\[[^\]]+\]\s*/, '');
+  // Remove bracket pattern [value] from anywhere in the message (but be more selective)
+  // Only remove brackets that look like field values (not general brackets)
+  cleaned = cleaned.replace(/\[([^\]]+)\]/g, (match, content) => {
+    // If the content looks like a field value (name, date, etc.), remove it
+    // Otherwise keep the brackets (they might be part of the actual message)
+    const trimmedContent = content.trim();
+    
+    // Check if it looks like a field value (name, date, interests, etc.)
+    if (
+      /^[A-Za-z\s]+$/.test(trimmedContent) || // Names (letters and spaces)
+      /^\d{4}-\d{2}-\d{2}$/.test(trimmedContent) || // Dates (YYYY-MM-DD)
+      /^[A-Za-z\s,]+$/.test(trimmedContent) || // Interests (letters, spaces, commas)
+      trimmedContent.length < 50 // Short content that might be field values
+    ) {
+      return ''; // Remove the bracket
+    }
+    
+    return match; // Keep the bracket
+  });
   
-  // Clean up extra whitespace
+  // Clean up extra whitespace and ensure we have content
   cleaned = cleaned.trim();
+  
+  // If cleaning resulted in empty string, return original text
+  if (!cleaned) {
+    return text;
+  }
   
   return cleaned;
 }
@@ -95,41 +140,16 @@ export function cleanAssistantMessage(text) {
  * @returns {Function} - Cleanup function
  */
 export function wireConvoToProfile(agoraService, onProfileUpdate) {
-  let isSubscribed = false;
-
-  // Subscribe to assistant responses (only once)
-  if (!isSubscribed) {
-    agoraService.onAgentResponse((message) => {
-      // Only parse final messages or after debounce
-      if (message.isFinal !== true) {
-        return; // Skip partials
-      }
-
-      const text = message.text || message.content || '';
-      if (!text) return;
-
-      // Parse profile update directly
-      const update = parseProfileUpdate(text, null); // Let the parser determine the field
-      if (update) {
-        // Call the callback with the update
-        if (onProfileUpdate) {
-          onProfileUpdate(null, update);
-        }
-      }
-    });
-    
-    isSubscribed = true;
-    console.log('🔗 Wired conversation to profile updates (direct mode)');
-  }
-
+  // Note: This function no longer adds its own event listener to prevent duplicates.
+  // The main ConversationInterface already handles transcription-updated events.
+  // This function now just returns a cleanup function for compatibility.
+  
+  console.log('🔗 Profile sync wired (no duplicate event listeners)');
+  
   // Return cleanup function
   return () => {
-    if (isSubscribed) {
-      // Note: We can't easily unsubscribe from agoraService events
-      // This is a limitation of the current implementation
-      isSubscribed = false;
-      console.log('🔌 Unwired conversation from profile updates');
-    }
+    // No cleanup needed since we're not adding event listeners here
+    console.log('🔌 Profile sync unwired');
   };
 }
 
