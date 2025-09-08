@@ -1,5 +1,7 @@
-// /netlify/functions/auth-admin.js
+// /netlify/functions/auth-admin.mjs
 import { getStore } from "@netlify/blobs";
+import fs from "node:fs";
+import path from "node:path";
 
 function getAuthStore() {
   const siteID =
@@ -19,6 +21,37 @@ function getAuthStore() {
   return getStore("auth", { siteID, token });
 }
 
+// Local development mock data
+const isLocal = process.env.NODE_ENV === 'development' || !process.env.NETLIFY;
+
+// Shared mock data file for local development
+const MOCK_DATA_FILE = path.join(process.cwd(), 'netlify', 'functions', '.mock-auth-data.json');
+
+// Mock store for local development
+const mockStore = {
+  async get(key, options) {
+    try {
+      if (fs.existsSync(MOCK_DATA_FILE)) {
+        const data = JSON.parse(fs.readFileSync(MOCK_DATA_FILE, 'utf8'));
+        return options?.type === 'json' ? data : JSON.stringify(data);
+      }
+      return options?.type === 'json' ? { users: [], codes: [], revokedAfter: {} } : '{"users":[],"codes":[],"revokedAfter":{}}';
+    } catch (error) {
+      console.error("Mock data file error:", error);
+      return options?.type === 'json' ? { users: [], codes: [], revokedAfter: {} } : '{"users":[],"codes":[],"revokedAfter":{}}';
+    }
+  },
+  async setJSON(key, data) {
+    try {
+      fs.writeFileSync(MOCK_DATA_FILE, JSON.stringify(data, null, 2));
+      console.log("Mock data saved to:", MOCK_DATA_FILE);
+    } catch (error) {
+      console.error("Mock data save error:", error);
+      throw error;
+    }
+  }
+};
+
 function j(status, obj) {
   return {
     statusCode: status,
@@ -32,8 +65,14 @@ async function handler(request, context) {
   if (token !== process.env.ADMIN_TOKEN) return new Response("Unauthorized", { status: 401 });
 
   try {
-    // ✅ Manual mode with siteID + token
-    const store = getAuthStore();
+    // Use mock store in local development, real Blobs in production
+    let store;
+    if (isLocal) {
+      store = mockStore;
+    } else {
+      store = getAuthStore();
+    }
+    
     let data = (await store.get("users.json", { type: "json" })) || { users: [], codes: [], revokedAfter: {} };
 
     if (request.method === "GET") return new Response(JSON.stringify(data), { status: 200, headers: { "Content-Type": "application/json" } });

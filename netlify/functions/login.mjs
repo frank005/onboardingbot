@@ -123,7 +123,7 @@ async function handler(request, context) {
 
   const cookie = [`session=${token}`, `Path=/`, `HttpOnly`, `Secure`, `SameSite=Lax`, `Max-Age=${SESSION_MAX_AGE_SEC}`].join("; ");
   return new Response("", {
-    status: 204,
+    status: 200,
     headers: {
       "Set-Cookie": cookie,
     },
