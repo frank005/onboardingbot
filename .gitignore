@@ -159,18 +159,5 @@ test-auth-local.js
 test-server.js
 netlify/functions/.mock-auth-data.json
 
-# Documentation and Guides (Local Only)
-HOW_TO_TEST_ADMIN.md
-TESTING_GUIDE.md
-FIXED_TESTING_GUIDE.md
-ADMIN_COMMANDS.md
-PRODUCTION_DEPLOYMENT_GUIDE.md
-PASSWORD_GATE_SETUP.md
-BLOBS_AUTH_SETUP.md
-SIMPLE_AUTH_WALL_GUIDE.md
-IMPLEMENTATION_SUMMARY.md
-PASSWORD_MANAGEMENT_API.md
-PASSWORD_MANAGEMENT_COMMANDS.md
-ENVIRONMENT_SETUP.md
-DEPLOYMENT.md
-SESSION_EXPIRY_TEST.md
+# Documentation folder (local only)
+docs/
