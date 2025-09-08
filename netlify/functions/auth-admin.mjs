@@ -1,6 +1,24 @@
 // /netlify/functions/auth-admin.js
 import { getStore } from "@netlify/blobs";
 
+function getAuthStore() {
+  const siteID =
+    process.env.NETLIFY_SITE_ID ||
+    process.env.SITE_ID; // Project ID (aka Site ID) in Netlify UI
+  const token =
+    process.env.NETLIFY_BLOBS_TOKEN ||
+    process.env.NETLIFY_AUTH_TOKEN; // Personal access token
+
+  if (!siteID || !token) {
+    throw new Error(
+      `Missing Blobs credentials: siteID=${siteID ? 'set' : 'unset'} token=${token ? 'set' : 'unset'}`
+    );
+  }
+
+  // ✅ v10+ API: getStore(name, options)
+  return getStore("auth", { siteID, token });
+}
+
 function j(status, obj) {
   return {
     statusCode: status,
@@ -9,20 +27,13 @@ function j(status, obj) {
   };
 }
 
-export default async (request, context) => {
+async function handler(request, context) {
   const token = request.headers.get("authorization")?.replace("Bearer ", "");
   if (token !== process.env.ADMIN_TOKEN) return new Response("Unauthorized", { status: 401 });
 
   try {
-    // Debug: log environment variables
-    console.log("NETLIFY_SITE_ID:", process.env.NETLIFY_SITE_ID ? "SET" : "NOT SET");
-    console.log("NETLIFY_BLOBS_TOKEN:", process.env.NETLIFY_BLOBS_TOKEN ? "SET" : "NOT SET");
-    
-    // Manual mode: pass siteID + token from env
-    const store = getStore("auth", {
-      siteID: process.env.NETLIFY_SITE_ID,
-      token: process.env.NETLIFY_BLOBS_TOKEN,
-    });
+    // ✅ Manual mode with siteID + token
+    const store = getAuthStore();
     let data = (await store.get("users.json", { type: "json" })) || { users: [], codes: [], revokedAfter: {} };
 
     if (request.method === "GET") return new Response(JSON.stringify(data), { status: 200, headers: { "Content-Type": "application/json" } });
@@ -69,4 +80,6 @@ export default async (request, context) => {
       stack: err?.stack || null,
     }), { status: 500, headers: { "Content-Type": "application/json" } });
   }
-};
+}
+
+export default handler;

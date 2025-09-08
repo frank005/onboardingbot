@@ -1,6 +1,25 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { getStore } from "@netlify/blobs";
+
+function getAuthStore() {
+  const siteID =
+    process.env.NETLIFY_SITE_ID ||
+    process.env.SITE_ID; // Project ID (aka Site ID) in Netlify UI
+  const token =
+    process.env.NETLIFY_BLOBS_TOKEN ||
+    process.env.NETLIFY_AUTH_TOKEN; // Personal access token
+
+  if (!siteID || !token) {
+    throw new Error(
+      `Missing Blobs credentials: siteID=${siteID ? 'set' : 'unset'} token=${token ? 'set' : 'unset'}`
+    );
+  }
+
+  // ✅ v10+ API: getStore(name, options)
+  return getStore("auth", { siteID, token });
+}
 
 const SESSION_SECRET = process.env.SESSION_SECRET ?? "dev-secret";
 const SESSION_MAX_AGE_SEC = 60 * 60 * 2; // 2 hours
@@ -17,7 +36,7 @@ function b64url(buf){
 }
 function sign(b64){ return crypto.createHmac("sha256", SESSION_SECRET).update(b64).digest("hex"); }
 
-export default async (request, context) => {
+async function handler(request, context) {
   if (request.method !== "POST") {
     return new Response("Method Not Allowed", { status: 405 });
   }
@@ -47,11 +66,8 @@ export default async (request, context) => {
   } else {
     // Use Netlify Blobs in production with fallback to environment variables
     try {
-      const { getStore } = await import("@netlify/blobs");
-      const store = getStore("auth", {
-        siteID: process.env.NETLIFY_SITE_ID,
-        token: process.env.NETLIFY_BLOBS_TOKEN,
-      });
+      // ✅ Manual mode with siteID + token
+      const store = getAuthStore();
       
       // Try to get existing data, create default if it doesn't exist
       try {
@@ -112,4 +128,6 @@ export default async (request, context) => {
       "Set-Cookie": cookie,
     },
   });
-};
+}
+
+export default handler;
