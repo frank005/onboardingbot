@@ -14,6 +14,10 @@ export default async (request, context) => {
   if (token !== process.env.ADMIN_TOKEN) return new Response("Unauthorized", { status: 401 });
 
   try {
+    // Debug: log environment variables
+    console.log("NETLIFY_SITE_ID:", process.env.NETLIFY_SITE_ID ? "SET" : "NOT SET");
+    console.log("NETLIFY_BLOBS_TOKEN:", process.env.NETLIFY_BLOBS_TOKEN ? "SET" : "NOT SET");
+    
     // Manual mode: pass siteID + token from env
     const store = getStore("auth", {
       siteID: process.env.NETLIFY_SITE_ID,
