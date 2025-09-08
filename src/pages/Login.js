@@ -18,7 +18,7 @@ export default function Login() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      if (res.status === 204) window.location.href = '/';
+      if (res.status === 200) window.location.href = '/';
       else if (res.status === 401) setMsg('Invalid credentials. Try again.');
       else if (res.status === 403) setMsg('Blocked. Contact the site owner.');
       else { const t = await res.text(); setMsg(`Error: ${res.status} ${t || ''}`); }
