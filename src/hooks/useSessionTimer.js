@@ -21,17 +21,20 @@ export const useSessionTimer = () => {
       );
       
       if (!sessionCookie) {
+        console.log('Session timer: No session cookie found');
         return null;
       }
 
       const sessionToken = sessionCookie.split('=')[1];
       if (!sessionToken) {
+        console.log('Session timer: Empty session token');
         return null;
       }
 
       // Parse JWT token (format: payload.signature)
       const [payloadB64] = sessionToken.split('.');
       if (!payloadB64) {
+        console.log('Session timer: Invalid token format');
         return null;
       }
 
@@ -43,9 +46,17 @@ export const useSessionTimer = () => {
       const decoded = atob(payload);
       const sessionData = JSON.parse(decoded);
       
+      console.log('Session timer: Parsed session data:', {
+        iat: new Date(sessionData.iat).toISOString(),
+        exp: new Date(sessionData.exp).toISOString(),
+        who: sessionData.who,
+        now: new Date().toISOString(),
+        remaining: sessionData.exp - Date.now()
+      });
+      
       return sessionData.exp; // Expiry timestamp in milliseconds
     } catch (error) {
-      console.error('Error parsing session token:', error);
+      console.error('Session timer: Error parsing session token:', error);
       return null;
     }
   }, []);
@@ -63,7 +74,17 @@ export const useSessionTimer = () => {
     const now = Date.now();
     const remaining = expiryTime - now;
 
+    console.log('Session timer: Update check', {
+      expiryTime,
+      now,
+      remaining,
+      remainingMinutes: Math.floor(remaining / 60000),
+      warningThreshold: WARNING_TIME_MS,
+      shouldShowWarning: remaining <= WARNING_TIME_MS
+    });
+
     if (remaining <= 0) {
+      console.log('Session timer: Session expired');
       setTimeRemaining(0);
       setShowWarning(false);
       setIsExpired(true);
