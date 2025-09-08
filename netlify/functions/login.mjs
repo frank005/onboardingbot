@@ -24,8 +24,11 @@ function getAuthStore() {
 const SESSION_SECRET = process.env.SESSION_SECRET ?? "dev-secret";
 const SESSION_MAX_AGE_SEC = 60 * 60 * 2; // 2 hours
 
-// Local development mock data - use more reliable detection
-const isLocal = process.env.NETLIFY_DEV === 'true' || process.env.NODE_ENV === 'development';
+// Local development mock data - detect based on Blobs credentials
+// If we have Blobs credentials, use real Blobs; otherwise use mock
+const hasBlobsCredentials = !!(process.env.NETLIFY_SITE_ID || process.env.SITE_ID) && 
+                           !!(process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_AUTH_TOKEN);
+const isLocal = !hasBlobsCredentials;
 
 // Shared mock data file for local development
 const MOCK_DATA_FILE = path.join(process.cwd(), 'netlify', 'functions', '.mock-auth-data.json');

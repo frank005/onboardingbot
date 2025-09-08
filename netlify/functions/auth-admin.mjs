@@ -21,8 +21,11 @@ function getAuthStore() {
   return getStore("auth", { siteID, token });
 }
 
-// Local development mock data - use more reliable detection
-const isLocal = process.env.NETLIFY_DEV === 'true' || process.env.NODE_ENV === 'development';
+// Local development mock data - detect based on Blobs credentials
+// If we have Blobs credentials, use real Blobs; otherwise use mock
+const hasBlobsCredentials = !!(process.env.NETLIFY_SITE_ID || process.env.SITE_ID) && 
+                           !!(process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_AUTH_TOKEN);
+const isLocal = !hasBlobsCredentials;
 
 // Shared mock data file for local development
 const MOCK_DATA_FILE = path.join(process.cwd(), 'netlify', 'functions', '.mock-auth-data.json');
@@ -65,11 +68,23 @@ async function handler(request, context) {
   if (token !== process.env.ADMIN_TOKEN) return new Response("Unauthorized", { status: 401 });
 
   try {
+    // Debug environment detection
+    console.log("Environment detection:", {
+      hasBlobsCredentials: hasBlobsCredentials,
+      isLocal: isLocal,
+      NETLIFY_SITE_ID: process.env.NETLIFY_SITE_ID ? 'set' : 'unset',
+      NETLIFY_BLOBS_TOKEN: process.env.NETLIFY_BLOBS_TOKEN ? 'set' : 'unset',
+      SITE_ID: process.env.SITE_ID ? 'set' : 'unset',
+      NETLIFY_AUTH_TOKEN: process.env.NETLIFY_AUTH_TOKEN ? 'set' : 'unset'
+    });
+
     // Use mock store in local development, real Blobs in production
     let store;
     if (isLocal) {
+      console.log("Using mock store for local development");
       store = mockStore;
     } else {
+      console.log("Using real Blobs store for production");
       // In production, always use real Blobs
       try {
         store = getAuthStore();
