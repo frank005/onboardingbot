@@ -249,7 +249,8 @@ END_PROFILE_CONTEXT`;
             key: process.env.MICROSOFT_TTS_API_KEY || '',
             region: process.env.MICROSOFT_TTS_REGION || 'eastus',
             voice_name: 'en-US-EvelynMultilingualNeural',
-            sample_rate: 24000
+            sample_rate: 24000,
+			speed: 1.3
           }
         }
       }
