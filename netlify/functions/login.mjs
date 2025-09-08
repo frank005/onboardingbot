@@ -24,8 +24,8 @@ function getAuthStore() {
 const SESSION_SECRET = process.env.SESSION_SECRET ?? "dev-secret";
 const SESSION_MAX_AGE_SEC = 60 * 60 * 2; // 2 hours
 
-// Local development mock data
-const isLocal = process.env.NODE_ENV === 'development' || !process.env.NETLIFY;
+// Local development mock data - use more reliable detection
+const isLocal = process.env.NETLIFY_DEV === 'true' || process.env.NODE_ENV === 'development';
 
 // Shared mock data file for local development
 const MOCK_DATA_FILE = path.join(process.cwd(), 'netlify', 'functions', '.mock-auth-data.json');

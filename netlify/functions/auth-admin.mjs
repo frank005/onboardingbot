@@ -21,8 +21,8 @@ function getAuthStore() {
   return getStore("auth", { siteID, token });
 }
 
-// Local development mock data
-const isLocal = process.env.NODE_ENV === 'development' || !process.env.NETLIFY;
+// Local development mock data - use more reliable detection
+const isLocal = process.env.NETLIFY_DEV === 'true' || process.env.NODE_ENV === 'development';
 
 // Shared mock data file for local development
 const MOCK_DATA_FILE = path.join(process.cwd(), 'netlify', 'functions', '.mock-auth-data.json');
@@ -70,7 +70,25 @@ async function handler(request, context) {
     if (isLocal) {
       store = mockStore;
     } else {
-      store = getAuthStore();
+      // In production, always use real Blobs
+      try {
+        store = getAuthStore();
+      } catch (blobsError) {
+        console.error("Blobs initialization failed in production:", blobsError);
+        // Fallback to environment variables if Blobs fails
+        const fallbackUsers = process.env.ALLOWED_USERS?.split(',').map(u => {
+          const [username, password] = u.split(':');
+          return {
+            u: username,
+            pw: password,
+            ver: 1,
+            expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days
+            blocked: false
+          };
+        }) || [];
+        const fallbackData = { users: fallbackUsers, codes: [], revokedAfter: {} };
+        return new Response(JSON.stringify(fallbackData), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
     }
     
     let data = (await store.get("users.json", { type: "json" })) || { users: [], codes: [], revokedAfter: {} };
