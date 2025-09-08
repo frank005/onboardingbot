@@ -107,6 +107,8 @@ export const useSessionTimer = () => {
 
   // Handle session expiry
   const handleSessionExpiry = useCallback(() => {
+    console.log('Session timer: Handling session expiry');
+    
     // Clear any existing session data
     document.cookie = 'session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
     
@@ -132,6 +134,30 @@ export const useSessionTimer = () => {
     const interval = setInterval(updateTimeRemaining, 1000);
 
     return () => clearInterval(interval);
+  }, [updateTimeRemaining]);
+
+  // Additional session validation - check if session is still valid on page focus/visibility
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        // Page became visible, check session
+        console.log('Session timer: Page became visible, checking session');
+        updateTimeRemaining();
+      }
+    };
+
+    const handleFocus = () => {
+      console.log('Session timer: Window focused, checking session');
+      updateTimeRemaining();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, [updateTimeRemaining]);
 
   // Handle session expiry
