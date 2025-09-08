@@ -6,6 +6,7 @@ import UserProfile from './components/UserProfile';
 import Analytics from './components/Analytics';
 import Settings from './components/Settings';
 import Navigation from './components/Navigation';
+import SessionWarning from './components/SessionWarning';
 import { useConversation } from './hooks/useConversation';
 import { useUser } from './hooks/useUser';
 import clientConfigService from './services/clientConfigService';
@@ -55,6 +56,7 @@ function App() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Navigation user={user} />
+      <SessionWarning />
       
       <main className="container mx-auto px-4 py-8">
         <Routes>

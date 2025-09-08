@@ -22,7 +22,7 @@ function getAuthStore() {
 }
 
 const SESSION_SECRET = process.env.SESSION_SECRET ?? "dev-secret";
-const SESSION_MAX_AGE_SEC = 60 * 60 * 2; // 2 hours
+const SESSION_MAX_AGE_SEC = 60 * 20; // 20 minutes
 
 // Local development mock data - detect based on Blobs credentials
 // If we have Blobs credentials, use real Blobs; otherwise use mock

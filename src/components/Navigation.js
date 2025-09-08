@@ -1,10 +1,12 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { MessageCircle, User, BarChart3, Settings, Bot } from 'lucide-react';
+import { MessageCircle, User, BarChart3, Settings, Bot, Clock } from 'lucide-react';
+import { useSessionTimer } from '../hooks/useSessionTimer';
 
 const Navigation = ({ user }) => {
   const location = useLocation();
+  const { timeRemaining, showWarning, formatTimeRemaining } = useSessionTimer();
 
   const navItems = [
     { path: '/', label: 'Conversation', icon: MessageCircle },
@@ -66,6 +68,18 @@ const Navigation = ({ user }) => {
 
           {/* User Info */}
           <div className="flex items-center space-x-3">
+            {/* Session Timer */}
+            {timeRemaining !== null && (
+              <div className={`flex items-center space-x-1 px-2 py-1 rounded text-xs ${
+                showWarning 
+                  ? 'bg-yellow-100 text-yellow-800' 
+                  : 'bg-gray-100 text-gray-600'
+              }`}>
+                <Clock className="w-3 h-3" />
+                <span>{formatTimeRemaining(timeRemaining)}</span>
+              </div>
+            )}
+            
             <div className="text-right">
               <p className="text-sm font-medium text-gray-900">
                 {user?.profile?.name || 'Guest User'}
