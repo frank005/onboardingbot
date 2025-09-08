@@ -17,11 +17,17 @@ function b64url(buf){
 }
 function sign(b64){ return crypto.createHmac("sha256", SESSION_SECRET).update(b64).digest("hex"); }
 
-export const handler = async (event) => {
-  if (event.httpMethod !== "POST") return { statusCode: 405, body: "Method Not Allowed" };
+export default async (request, context) => {
+  if (request.method !== "POST") {
+    return new Response("Method Not Allowed", { status: 405 });
+  }
 
   let body;
-  try { body = JSON.parse(event.body || "{}"); } catch { return { statusCode: 400, body: "Bad JSON" }; }
+  try { 
+    body = await request.json(); 
+  } catch { 
+    return new Response("Bad JSON", { status: 400 }); 
+  }
   const { username = "", password = "" } = body;
 
   let raw;
@@ -39,10 +45,13 @@ export const handler = async (event) => {
       raw = { users: [], codes: [], revokedAfter: {} };
     }
   } else {
-    // Use Netlify Blobs in production
+    // Use Netlify Blobs in production with fallback to environment variables
     try {
       const { getStore } = await import("@netlify/blobs");
-      const store = getStore({ name: "auth" });
+      const store = getStore("auth", {
+        siteID: process.env.NETLIFY_SITE_ID,
+        token: process.env.NETLIFY_BLOBS_TOKEN,
+      });
       
       // Try to get existing data, create default if it doesn't exist
       try {
@@ -55,9 +64,19 @@ export const handler = async (event) => {
       }
     } catch (error) {
       console.error("Blobs initialization error in login:", error);
-      // Fallback to empty data structure instead of failing
-      console.log("Falling back to empty data structure in login");
-      raw = { users: [], codes: [], revokedAfter: {} };
+      // Fallback to environment variables if Blobs fails
+      console.log("Falling back to environment variables in login");
+      const fallbackUsers = process.env.ALLOWED_USERS?.split(',').map(u => {
+        const [username, password] = u.split(':');
+        return {
+          u: username,
+          pw: password,
+          ver: 1,
+          expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days
+          blocked: false
+        };
+      }) || [];
+      raw = { users: fallbackUsers, codes: [], revokedAfter: {} };
     }
   }
 
@@ -71,7 +90,9 @@ export const handler = async (event) => {
     (!uRec.expiresAt || now < Date.parse(uRec.expiresAt)) &&
     uRec.pw === password;
 
-  if (!okUser) return { statusCode: 401, body: "Unauthorized" };
+  if (!okUser) {
+    return new Response("Unauthorized", { status: 401 });
+  }
 
   const payload = JSON.stringify({
     iat: Date.now(),
@@ -85,5 +106,10 @@ export const handler = async (event) => {
   const token = `${tPayload}.${tSig}`;
 
   const cookie = [`session=${token}`, `Path=/`, `HttpOnly`, `Secure`, `SameSite=Lax`, `Max-Age=${SESSION_MAX_AGE_SEC}`].join("; ");
-  return { statusCode: 204, headers: { "Set-Cookie": cookie }, body: "" };
+  return new Response("", {
+    status: 204,
+    headers: {
+      "Set-Cookie": cookie,
+    },
+  });
 };

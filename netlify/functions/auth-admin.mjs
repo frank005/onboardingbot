@@ -14,7 +14,11 @@ export default async (request, context) => {
   if (token !== process.env.ADMIN_TOKEN) return new Response("Unauthorized", { status: 401 });
 
   try {
-    const store = getStore({ name: "auth" });
+    // Manual mode: pass siteID + token from env
+    const store = getStore("auth", {
+      siteID: process.env.NETLIFY_SITE_ID,
+      token: process.env.NETLIFY_BLOBS_TOKEN,
+    });
     let data = (await store.get("users.json", { type: "json" })) || { users: [], codes: [], revokedAfter: {} };
 
     if (request.method === "GET") return new Response(JSON.stringify(data), { status: 200, headers: { "Content-Type": "application/json" } });
