@@ -197,7 +197,7 @@
                     body: JSON.stringify({ username, password })
                 });
                 
-                if (response.status === 204) {
+                if (response.status === 200) {
                     // Success - redirect to the original page or home
                     successMessage.textContent = 'Login successful! Redirecting...';
                     successMessage.style.display = 'block';
