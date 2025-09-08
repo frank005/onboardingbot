@@ -4,6 +4,10 @@
   publish = "build"
   functions = "netlify/functions"
 
+[[edge_functions]]
+  path = "/*"
+  function = "gate"
+
 # Disable secrets scanning for environment variable names
 [build.environment]
   SECRETS_SCAN_ENABLED = "false"

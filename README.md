@@ -150,7 +150,7 @@ AVATAR_ID=your_avatar_id
 TTS_VENDOR=microsoft
 MICROSOFT_TTS_API_KEY=your_microsoft_tts_key
 MICROSOFT_TTS_REGION=eastus
-MICROSOFT_TTS_VOICE=en-US-JennyNeural
+MICROSOFT_TTS_VOICE=en-US-EvelynMultilingualNeural
 
 # Bot Configuration
 BOT_NAME=Welcome Bot
@@ -270,7 +270,7 @@ AVATAR_ID=your_avatar_id
 TTS_VENDOR=microsoft
 MICROSOFT_TTS_API_KEY=your_microsoft_tts_key
 MICROSOFT_TTS_REGION=eastus
-MICROSOFT_TTS_VOICE=en-US-JennyNeural
+MICROSOFT_TTS_VOICE=en-US-EvelynMultilingualNeural
 
 # Advanced Features
 ENABLE_AIVAD=false

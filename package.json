@@ -4,6 +4,7 @@
   "description": "Conversational AI Demo for User Onboarding",
   "private": true,
   "dependencies": {
+    "@netlify/blobs": "^10.0.10",
     "autoprefixer": "^10.4.16",
     "axios": "^1.11.0",
     "framer-motion": "^10.16.5",
