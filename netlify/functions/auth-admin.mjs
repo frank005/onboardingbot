@@ -43,33 +43,76 @@ async function handler(request, context) {
     try { body = await request.json(); }
     catch { return new Response(JSON.stringify({ error: "Bad JSON" }), { status: 400, headers: { "Content-Type": "application/json" } }); }
 
+    // Default 30-day window helper
+    function defaultExpiryISO(days = 30) {
+      return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+    }
+
     switch (body.action) {
       case "upsertUser": {
-        const { u, pw, ver = 1, expiresAt = null, blocked = false } = body;
-        const idx = data.users.findIndex((x) => x.u === u);
+        const { u, pw, ver = 1, blocked = false } = body;
+        // Default: 30-day expiry if none provided
+        const expiresAt = body.expiresAt ?? defaultExpiryISO(30);
+
+        // Re-read latest before write (reduces races)
+        data = (await store.get("users.json", { type: "json" })) || { users: [], codes: [], revokedAfter: {} };
+
+        const idx = data.users.findIndex(x => x.u === u);
         const rec = { u, pw, ver, expiresAt, blocked };
         if (idx >= 0) data.users[idx] = rec; else data.users.push(rec);
-        await store.setJSON("users.json", data);          // <-- write
+
+        await store.setJSON("users.json", data);
         return new Response("", { status: 200 });
       }
+
+      case "bulkUpsertUsers": {
+        const { entries = [] } = body; // [{u,pw,ver,blocked,expiresAt?}, ...]
+        // Default expiry for any missing expiresAt
+        for (const e of entries) {
+          if (!e.expiresAt) e.expiresAt = defaultExpiryISO(30);
+          if (typeof e.ver !== "number") e.ver = 1;
+          if (typeof e.blocked !== "boolean") e.blocked = false;
+        }
+
+        // One read, one write — avoids last-write-wins for multi-user adds
+        data = (await store.get("users.json", { type: "json" })) || { users: [], codes: [], revokedAfter: {} };
+
+        for (const e of entries) {
+          const idx = data.users.findIndex(x => x.u === e.u);
+          const rec = { u: e.u, pw: e.pw, ver: e.ver, expiresAt: e.expiresAt, blocked: e.blocked };
+          if (idx >= 0) data.users[idx] = rec; else data.users.push(rec);
+        }
+
+        await store.setJSON("users.json", data);
+        return new Response("", { status: 200 });
+      }
+
       case "blockUser": {
         const { u, blocked = true } = body;
-        const rec = data.users.find((x) => x.u === u);
+        data = (await store.get("users.json", { type: "json" })) || { users: [], codes: [], revokedAfter: {} };
+        const rec = data.users.find(x => x.u === u);
         if (rec) rec.blocked = !!blocked;
-        await store.setJSON("users.json", data);          // <-- write
+        await store.setJSON("users.json", data);
         return new Response("", { status: 200 });
       }
+
       case "revokeUser": {
         const { u, after } = body;
+        data = (await store.get("users.json", { type: "json" })) || { users: [], codes: [], revokedAfter: {} };
+        data.revokedAfter = data.revokedAfter || {};
         data.revokedAfter[u] = after || new Date().toISOString();
-        await store.setJSON("users.json", data);          // <-- write
+        await store.setJSON("users.json", data);
         return new Response("", { status: 200 });
       }
+
       case "setCodes": {
-        data.codes = body.codes || [];
-        await store.setJSON("users.json", data);          // <-- write
+        const { codes = [] } = body;
+        data = (await store.get("users.json", { type: "json" })) || { users: [], codes: [], revokedAfter: {} };
+        data.codes = codes;
+        await store.setJSON("users.json", data);
         return new Response("", { status: 200 });
       }
+
       default:
         return new Response(JSON.stringify({ error: "Bad action" }), { status: 400, headers: { "Content-Type": "application/json" } });
     }
