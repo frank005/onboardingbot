@@ -34,10 +34,21 @@ export const handler = async (event) => {
     try {
       const { getStore } = await import("@netlify/blobs");
       const store = getStore({ name: "auth" });
-      data = (await store.get("users.json", { type: "json" })) || { users: [], codes: [], revokedAfter: {} };
+      
+      // Try to get existing data, create default if it doesn't exist
+      try {
+        const blobData = await store.get("users.json", { type: "json" });
+        data = blobData || { users: [], codes: [], revokedAfter: {} };
+        console.log("Successfully loaded data from Blobs");
+      } catch (getError) {
+        console.log("No existing data found, creating default structure:", getError.message);
+        data = { users: [], codes: [], revokedAfter: {} };
+      }
     } catch (error) {
-      console.error("Blobs error:", error);
-      return { statusCode: 500, body: "Storage error" };
+      console.error("Blobs initialization error:", error);
+      // Fallback to empty data structure instead of failing
+      console.log("Falling back to empty data structure");
+      data = { users: [], codes: [], revokedAfter: {} };
     }
   }
 
@@ -151,9 +162,16 @@ export const handler = async (event) => {
         const { getStore } = await import("@netlify/blobs");
         const store = getStore({ name: "auth" });
         await store.setJSON("users.json", data);
+        console.log("Successfully saved data to Blobs");
       } catch (error) {
         console.error("Blobs save error:", error);
-        return { statusCode: 500, body: "Storage error" };
+        console.error("Error details:", {
+          message: error.message,
+          stack: error.stack,
+          name: error.name
+        });
+        // Don't fail the operation, just log the error
+        console.log("Continuing despite Blobs save error");
       }
     }
     

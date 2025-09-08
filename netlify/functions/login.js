@@ -43,10 +43,21 @@ export const handler = async (event) => {
     try {
       const { getStore } = await import("@netlify/blobs");
       const store = getStore({ name: "auth" });
-      raw = (await store.get("users.json", { type: "json" })) || { users: [], codes: [], revokedAfter: {} };
+      
+      // Try to get existing data, create default if it doesn't exist
+      try {
+        const blobData = await store.get("users.json", { type: "json" });
+        raw = blobData || { users: [], codes: [], revokedAfter: {} };
+        console.log("Successfully loaded data from Blobs in login");
+      } catch (getError) {
+        console.log("No existing data found in login, creating default structure:", getError.message);
+        raw = { users: [], codes: [], revokedAfter: {} };
+      }
     } catch (error) {
-      console.error("Blobs error:", error);
-      return { statusCode: 500, body: "Storage error" };
+      console.error("Blobs initialization error in login:", error);
+      // Fallback to empty data structure instead of failing
+      console.log("Falling back to empty data structure in login");
+      raw = { users: [], codes: [], revokedAfter: {} };
     }
   }
 

@@ -54,6 +54,10 @@
   node_bundler = "esbuild"
   external_node_modules = []
 
+# Configure Netlify Blobs
+[[blobs]]
+  name = "auth"
+
 [[headers]]
   for = "/*"
   [headers.values]

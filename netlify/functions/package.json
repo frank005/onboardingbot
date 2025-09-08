@@ -4,7 +4,8 @@
   "description": "Netlify Functions for Agora Convo AI",
   "main": "index.js",
   "dependencies": {
-    "axios": "^1.6.0"
+    "axios": "^1.6.0",
+    "@netlify/blobs": "^10.0.10"
   },
   "devDependencies": {},
   "scripts": {

@@ -152,6 +152,7 @@ scripts/test-admin.js
 scripts/create-production-users.js
 scripts/test-auth.js
 scripts/test-password-management.js
+scripts/test-production-admin.js
 scripts/restart-dev.sh
 scripts/create-users.sh
 test-auth-local.js
