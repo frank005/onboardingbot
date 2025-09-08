@@ -128,7 +128,7 @@ ASR_LANGUAGE=en-US
 
 ```bash
 # Agora Configuration
-AGORA_APP_ID=a9a4b25e4e8b4a558aa39780d1a84342
+AGORA_APP_ID=your_app_id
 AGORA_CUSTOMER_ID=your_customer_id
 AGORA_CUSTOMER_SECRET=your_customer_secret
 AGORA_CHANNEL=onboarding_channel
@@ -141,7 +141,7 @@ OPENAI_TEMPERATURE=0.7
 
 # TTS Configuration
 TTS_VENDOR=microsoft
-MICROSOFT_TTS_API_KEY=ba573d477e1c44f99ee0083e81e3e7cf
+MICROSOFT_TTS_API_KEY=your_api_key
 MICROSOFT_TTS_REGION=eastus
 MICROSOFT_TTS_VOICE=en-US-AvaMultilingualNeural
 
