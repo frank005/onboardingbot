@@ -124,7 +124,7 @@ async function handler(request, context) {
   const tSig = sign(tPayload);
   const token = `${tPayload}.${tSig}`;
 
-  const cookie = [`session=${token}`, `Path=/`, `HttpOnly`, `Secure`, `SameSite=Lax`, `Max-Age=${SESSION_MAX_AGE_SEC}`].join("; ");
+  const cookie = [`session=${token}`, `Path=/`, `Secure`, `SameSite=Lax`, `Max-Age=${SESSION_MAX_AGE_SEC}`].join("; ");
   return new Response("", {
     status: 200,
     headers: {

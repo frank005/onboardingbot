@@ -170,6 +170,70 @@
     </div>
 
     <script>
+        // Session timer functionality
+        function getSessionExpiry() {
+            try {
+                const cookies = document.cookie.split(';');
+                const sessionCookie = cookies.find(cookie => 
+                    cookie.trim().startsWith('session=')
+                );
+                
+                if (!sessionCookie) {
+                    return null;
+                }
+
+                const sessionToken = sessionCookie.split('=')[1];
+                if (!sessionToken) {
+                    return null;
+                }
+
+                const [payloadB64] = sessionToken.split('.');
+                if (!payloadB64) {
+                    return null;
+                }
+
+                const payload = payloadB64
+                    .replace(/-/g, '+')
+                    .replace(/_/g, '/');
+                
+                const decoded = atob(payload);
+                const sessionData = JSON.parse(decoded);
+                
+                return sessionData.exp;
+            } catch (error) {
+                console.error('Error parsing session token:', error);
+                return null;
+            }
+        }
+
+        function updateSessionTimer() {
+            const expiryTime = getSessionExpiry();
+            if (!expiryTime) {
+                return;
+            }
+
+            const now = Date.now();
+            const remaining = expiryTime - now;
+
+            if (remaining <= 0) {
+                // Session expired
+                document.cookie = 'session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+                alert('Your session has expired. Please log in again.');
+                window.location.reload();
+            } else if (remaining <= 5 * 60 * 1000) { // 5 minutes warning
+                // Show warning
+                const minutes = Math.floor(remaining / 60000);
+                const seconds = Math.floor((remaining % 60000) / 1000);
+                console.log(`Session expires in ${minutes}:${seconds.toString().padStart(2, '0')}`);
+            }
+        }
+
+        // Check session every second
+        setInterval(updateSessionTimer, 1000);
+        
+        // Initial check
+        updateSessionTimer();
+
         document.getElementById('loginForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             
