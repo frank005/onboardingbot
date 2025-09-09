@@ -135,7 +135,7 @@ const ConversationInterface = ({
           lastProcessedMessageCountRef.current = 0;
           processedMessages.current.clear();
           
-          toast.info('Conversation reset. You can start a new conversation.');
+          toast('Conversation reset. You can start a new conversation.');
         }
       } catch (error) {
         console.error('Error checking for stale connection:', error);
@@ -147,32 +147,47 @@ const ConversationInterface = ({
 
   // Handle page visibility changes to reset conversation when user navigates away and back
   useEffect(() => {
+    let hiddenTime = null;
+    
     const handleVisibilityChange = () => {
-      if (!document.hidden && agoraConnected) {
+      if (document.hidden) {
+        // Page became hidden - record the time
+        hiddenTime = Date.now();
+      } else if (!document.hidden && agoraConnected && hiddenTime) {
         // Page became visible and we have an active Agora connection
-        // This means user navigated back to the conversation tab
-        console.log('🔄 Page became visible - resetting conversation state');
+        // Only reset if the page was hidden for more than 30 seconds (user likely navigated away)
+        const hiddenDuration = Date.now() - hiddenTime;
+        const RESET_THRESHOLD = 30000; // 30 seconds
         
-        // Disconnect from Agora to clean up
-        agoraService.disconnect().catch(console.error);
-        setAgoraConnected(false);
-        setAgoraAgentId(null);
+        if (hiddenDuration > RESET_THRESHOLD) {
+          console.log('🔄 Page became visible after long absence - resetting conversation state');
+          
+          // Disconnect from Agora to clean up
+          agoraService.disconnect().catch(console.error);
+          setAgoraConnected(false);
+          setAgoraAgentId(null);
+          
+          // Reset conversation to allow fresh start
+          setConversation(prev => ({
+            ...prev,
+            status: 'idle',
+            messages: []
+          }));
+          
+          // Clear any pending profile updates
+          setProfileUpdates([]);
+          
+          // Reset processed message count and processed messages set
+          lastProcessedMessageCountRef.current = 0;
+          processedMessages.current.clear();
+          
+          toast('Conversation reset. You can start a new conversation.');
+        } else {
+          console.log('🔄 Page became visible after brief absence - keeping conversation active');
+        }
         
-        // Reset conversation to allow fresh start
-        setConversation(prev => ({
-          ...prev,
-          status: 'idle',
-          messages: []
-        }));
-        
-        // Clear any pending profile updates
-        setProfileUpdates([]);
-        
-        // Reset processed message count and processed messages set
-        lastProcessedMessageCountRef.current = 0;
-        processedMessages.current.clear();
-        
-        toast.info('Conversation reset. You can start a new conversation.');
+        // Reset hidden time
+        hiddenTime = null;
       }
     };
 

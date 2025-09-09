@@ -21,20 +21,20 @@ export const useSessionTimer = () => {
       );
       
       if (!sessionCookie) {
-        console.log('Session timer: No session cookie found');
+        // console.log('Session timer: No session cookie found');
         return null;
       }
 
       const sessionToken = sessionCookie.split('=')[1];
       if (!sessionToken) {
-        console.log('Session timer: Empty session token');
+        // console.log('Session timer: Empty session token');
         return null;
       }
 
       // Parse JWT token (format: payload.signature)
       const [payloadB64] = sessionToken.split('.');
       if (!payloadB64) {
-        console.log('Session timer: Invalid token format');
+        // console.log('Session timer: Invalid token format');
         return null;
       }
 
@@ -46,13 +46,13 @@ export const useSessionTimer = () => {
       const decoded = atob(payload);
       const sessionData = JSON.parse(decoded);
       
-      console.log('Session timer: Parsed session data:', {
-        iat: new Date(sessionData.iat).toISOString(),
-        exp: new Date(sessionData.exp).toISOString(),
-        who: sessionData.who,
-        now: new Date().toISOString(),
-        remaining: sessionData.exp - Date.now()
-      });
+      // console.log('Session timer: Parsed session data:', {
+      //   iat: new Date(sessionData.iat).toISOString(),
+      //   exp: new Date(sessionData.exp).toISOString(),
+      //   who: sessionData.who,
+      //   now: new Date().toISOString(),
+      //   remaining: sessionData.exp - Date.now()
+      // });
       
       return sessionData.exp; // Expiry timestamp in milliseconds
     } catch (error) {
@@ -67,7 +67,7 @@ export const useSessionTimer = () => {
     if (!expiryTime) {
       // If no session cookie found, this means the session has expired or been removed
       // Treat this as an expired session and trigger logout
-      console.log('Session timer: No session cookie - treating as expired');
+      // console.log('Session timer: No session cookie - treating as expired');
       setTimeRemaining(0);
       setShowWarning(false);
       setIsExpired(true);
@@ -77,17 +77,17 @@ export const useSessionTimer = () => {
     const now = Date.now();
     const remaining = expiryTime - now;
 
-    console.log('Session timer: Update check', {
-      expiryTime,
-      now,
-      remaining,
-      remainingMinutes: Math.floor(remaining / 60000),
-      warningThreshold: WARNING_TIME_MS,
-      shouldShowWarning: remaining <= WARNING_TIME_MS
-    });
+    // console.log('Session timer: Update check', {
+    //   expiryTime,
+    //   now,
+    //   remaining,
+    //   remainingMinutes: Math.floor(remaining / 60000),
+    //   warningThreshold: WARNING_TIME_MS,
+    //   shouldShowWarning: remaining <= WARNING_TIME_MS
+    // });
 
     if (remaining <= 0) {
-      console.log('Session timer: Session expired');
+      // console.log('Session timer: Session expired');
       setTimeRemaining(0);
       setShowWarning(false);
       setIsExpired(true);
@@ -110,7 +110,7 @@ export const useSessionTimer = () => {
 
   // Handle session expiry
   const handleSessionExpiry = useCallback(() => {
-    console.log('Session timer: Handling session expiry');
+    // console.log('Session timer: Handling session expiry');
 
     // Clear any existing session data
     document.cookie = 'session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
@@ -128,7 +128,7 @@ export const useSessionTimer = () => {
   // Refresh session
   const refreshSession = useCallback(async () => {
     try {
-      console.log('Session timer: Refreshing session...');
+      // console.log('Session timer: Refreshing session...');
       
       const response = await fetch('/.netlify/functions/refresh-session', {
         method: 'POST',
@@ -144,7 +144,7 @@ export const useSessionTimer = () => {
       }
 
       const data = await response.json();
-      console.log('Session timer: Session refreshed successfully');
+      // console.log('Session timer: Session refreshed successfully');
       
       // Reset the expiry handled flag since we have a fresh session
       expiryHandledRef.current = false;
@@ -185,13 +185,13 @@ export const useSessionTimer = () => {
     const handleVisibilityChange = () => {
       if (!document.hidden) {
         // Page became visible, check session
-        console.log('Session timer: Page became visible, checking session');
+        // console.log('Session timer: Page became visible, checking session');
         updateTimeRemaining();
       }
     };
 
     const handleFocus = () => {
-      console.log('Session timer: Window focused, checking session');
+      // console.log('Session timer: Window focused, checking session');
       updateTimeRemaining();
     };
 
@@ -206,9 +206,9 @@ export const useSessionTimer = () => {
 
   // Handle session expiry
   useEffect(() => {
-    console.log('Session timer: Expiry effect triggered', { isExpired, expiryHandled: expiryHandledRef.current });
+    // console.log('Session timer: Expiry effect triggered', { isExpired, expiryHandled: expiryHandledRef.current });
     if (isExpired && !expiryHandledRef.current) {
-      console.log('Session timer: Calling handleSessionExpiry');
+      // console.log('Session timer: Calling handleSessionExpiry');
       expiryHandledRef.current = true;
       handleSessionExpiry();
     }
