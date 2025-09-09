@@ -65,9 +65,13 @@ export const useSessionTimer = () => {
   const updateTimeRemaining = useCallback(() => {
     const expiryTime = getSessionExpiry();
     if (!expiryTime) {
-      setTimeRemaining(null);
-      setShowWarning(false);
-      setIsExpired(false);
+      // If no session cookie found, check if we're already in expired state
+      // If not, this might be a fresh page load without a session
+      if (!isExpired) {
+        setTimeRemaining(null);
+        setShowWarning(false);
+        setIsExpired(false);
+      }
       return;
     }
 
@@ -93,7 +97,7 @@ export const useSessionTimer = () => {
       setShowWarning(remaining <= WARNING_TIME_MS);
       setIsExpired(false);
     }
-  }, [getSessionExpiry]);
+  }, [getSessionExpiry, isExpired]);
 
   // Format time remaining as MM:SS
   const formatTimeRemaining = useCallback((ms) => {
@@ -108,16 +112,19 @@ export const useSessionTimer = () => {
   // Handle session expiry
   const handleSessionExpiry = useCallback(() => {
     console.log('Session timer: Handling session expiry');
-    
+
     // Clear any existing session data
     document.cookie = 'session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
-    
+
     // Show expiry message
     alert('Your session has expired. Please log in again.');
-    
+
     // Redirect to login
     window.location.href = '/login';
   }, []);
+
+  // Track if we've already handled expiry to prevent multiple alerts
+  const [expiryHandled, setExpiryHandled] = useState(false);
 
   // Refresh session (placeholder for future implementation)
   const refreshSession = useCallback(async () => {
@@ -162,10 +169,11 @@ export const useSessionTimer = () => {
 
   // Handle session expiry
   useEffect(() => {
-    if (isExpired) {
+    if (isExpired && !expiryHandled) {
+      setExpiryHandled(true);
       handleSessionExpiry();
     }
-  }, [isExpired, handleSessionExpiry]);
+  }, [isExpired, expiryHandled, handleSessionExpiry]);
 
   return {
     timeRemaining,
