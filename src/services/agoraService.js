@@ -706,7 +706,7 @@ class AgoraService {
     }
 
     try {
-      const response = await fetch(`/api/agora/agents/stop`, {
+      const response = await fetch(`/.netlify/functions/agora-agents-stop`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
