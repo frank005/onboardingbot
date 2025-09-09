@@ -6,6 +6,9 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 // Warning time before expiry (5 minutes before)
 const WARNING_TIME_MS = 5 * 60 * 1000;
 
+// Global flag to prevent multiple expiry handlers from running
+let globalExpiryHandled = false;
+
 export const useSessionTimer = () => {
   const [timeRemaining, setTimeRemaining] = useState(null);
   const [showWarning, setShowWarning] = useState(false);
@@ -148,6 +151,7 @@ export const useSessionTimer = () => {
       
       // Reset the expiry handled flag since we have a fresh session
       expiryHandledRef.current = false;
+      globalExpiryHandled = false;
       
       // Update the timer to reflect the new session
       updateTimeRemaining();
@@ -162,6 +166,7 @@ export const useSessionTimer = () => {
   // Reset expiry handled flag (useful when starting a new session)
   const resetExpiryHandled = useCallback(() => {
     expiryHandledRef.current = false;
+    globalExpiryHandled = false; // Reset global flag too
   }, []);
 
   // Set up timer
@@ -206,10 +211,11 @@ export const useSessionTimer = () => {
 
   // Handle session expiry
   useEffect(() => {
-    // console.log('Session timer: Expiry effect triggered', { isExpired, expiryHandled: expiryHandledRef.current });
-    if (isExpired && !expiryHandledRef.current) {
+    // console.log('Session timer: Expiry effect triggered', { isExpired, expiryHandled: expiryHandledRef.current, globalExpiryHandled });
+    if (isExpired && !expiryHandledRef.current && !globalExpiryHandled) {
       // console.log('Session timer: Calling handleSessionExpiry');
       expiryHandledRef.current = true;
+      globalExpiryHandled = true; // Prevent other instances from handling expiry
       handleSessionExpiry();
     }
   }, [isExpired, handleSessionExpiry]);

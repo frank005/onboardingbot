@@ -999,7 +999,7 @@ const ConversationInterface = ({
               </motion.div>
             ) : (
               (() => {
-                console.log('🎯 Rendering conversation with', conversation?.messages?.length || 0, 'messages:', conversation?.messages);
+                // console.log('🎯 Rendering conversation with', conversation?.messages?.length || 0, 'messages:', conversation?.messages);
                 return conversation?.messages?.map((msg, index) => (
                   <motion.div
                     key={index}
