@@ -15,6 +15,7 @@ import {
   wireConvoToProfile
 } from '../utils/profile-sync';
 import { normalizeAssistant } from '../utils/normalizeAssistant';
+import { useSessionTimer } from '../hooks/useSessionTimer';
 
 const ConversationInterface = ({ 
   config, 
@@ -47,6 +48,9 @@ const ConversationInterface = ({
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
+  // Session timer hook
+  const { isExpired } = useSessionTimer();
+
 
   const processedMessages = useRef(new Set()); // Track processed messages to prevent duplicates
   
@@ -70,6 +74,67 @@ const ConversationInterface = ({
       setAgoraError(null);
     }
   }, [agoraError]);
+
+  // Handle session expiry
+  useEffect(() => {
+    if (isExpired) {
+      console.log('🔄 Session expired - cleaning up conversation');
+      
+      // Disconnect from Agora
+      if (agoraConnected) {
+        agoraService.disconnect().catch(console.error);
+        setAgoraConnected(false);
+        setAgoraAgentId(null);
+      }
+      
+      // Reset conversation state
+      setConversation(prev => ({
+        ...prev,
+        status: 'expired',
+        messages: prev.messages.map(msg => ({
+          ...msg,
+          isExpired: true
+        }))
+      }));
+      
+      // Show session expired message
+      toast.error('Your session has expired. Please log in again.');
+    }
+  }, [isExpired, agoraConnected, setConversation]);
+
+  // Handle page visibility changes to reset conversation when user navigates away and back
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden && agoraConnected) {
+        // Page became visible and we have an active Agora connection
+        // This means user navigated back to the conversation tab
+        console.log('🔄 Page became visible - resetting conversation state');
+        
+        // Disconnect from Agora to clean up
+        agoraService.disconnect().catch(console.error);
+        setAgoraConnected(false);
+        setAgoraAgentId(null);
+        
+        // Reset conversation to allow fresh start
+        setConversation(prev => ({
+          ...prev,
+          status: 'idle',
+          messages: []
+        }));
+        
+        // Clear any pending profile updates
+        setProfileUpdates([]);
+        
+        toast.info('Conversation reset. You can start a new conversation.');
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [agoraConnected, setConversation]);
 
   // Cleanup Agora connection only on unmount (no automatic conversation stopping)
   useEffect(() => {
@@ -124,6 +189,12 @@ const ConversationInterface = ({
 
   const handleStartConversation = async () => {
     try {
+      // Check if session is expired
+      if (isExpired) {
+        toast.error('Your session has expired. Please log in again.');
+        return;
+      }
+      
       const userId = user?.id || `user_${Date.now()}`;
       
       console.log('🔄 Starting new conversation - cleaning up previous state');
@@ -550,6 +621,12 @@ const ConversationInterface = ({
   const handleSendMessage = (text) => {
     if (!text.trim()) return;
 
+    // Check if session is expired
+    if (isExpired) {
+      toast.error('Your session has expired. Please log in again.');
+      return;
+    }
+
     // Send via Agora RTM if connected
     if (agoraConnected && agoraAgentId) {
       console.log('📤 Sending message via Agora RTM:', text);
@@ -658,17 +735,19 @@ const ConversationInterface = ({
                           {/* Provider Status */}
                           <div className="flex items-center space-x-2 mt-1">
                             <div className={`w-2 h-2 rounded-full ${
+                              isExpired ? 'bg-red-500' : 
                               useAgora ? 'bg-blue-500' : 'bg-green-500'
                             }`}></div>
                             <span className="text-xs text-gray-500">
-                              {agoraConnected && agoraAgentId ? 'Agora ConvoAI' : 'Connecting...'}
+                              {isExpired ? 'Session Expired' :
+                               agoraConnected && agoraAgentId ? 'Agora ConvoAI' : 'Connecting...'}
                             </span>
-                            {agoraAgentId && (
+                            {agoraAgentId && !isExpired && (
                               <span className="text-xs text-blue-600">
                                 (Agent: {agoraAgentId.slice(0, 8)}...)
                               </span>
                             )}
-                            {conversation?.provider && (
+                            {conversation?.provider && !isExpired && (
                               <span className="text-xs text-gray-400">
                                 via {conversation.provider}
                               </span>
@@ -753,7 +832,39 @@ const ConversationInterface = ({
               </button>
             )}
             
-
+            {/* Reset Conversation Button */}
+            <button
+              onClick={async () => {
+                console.log('🔄 Manual conversation reset triggered');
+                
+                // Disconnect from Agora
+                if (agoraConnected) {
+                  await agoraService.disconnect();
+                  setAgoraConnected(false);
+                  setAgoraAgentId(null);
+                }
+                
+                // Reset conversation state
+                setConversation(prev => ({
+                  ...prev,
+                  status: 'idle',
+                  messages: []
+                }));
+                
+                // Clear any pending profile updates
+                setProfileUpdates([]);
+                
+                toast.success('Conversation reset successfully');
+              }}
+              className={`p-2 rounded-lg transition-colors ${
+                'text-blue-600 hover:text-blue-700 hover:bg-blue-50'
+              }`}
+              title="Reset Conversation"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </button>
             
             <button
               onClick={async () => {
@@ -811,16 +922,17 @@ const ConversationInterface = ({
                   <Bot className="w-8 h-8 text-primary-600" />
                 </div>
                 <h2 className="text-lg font-semibold text-gray-900 mb-2">
-                  Welcome to the Platform!
+                  {isExpired ? "Session Expired" : "Welcome to the Platform!"}
                 </h2>
                 <p className="text-gray-600 mb-6 max-w-md mx-auto">
-                  I'm here to help you get started. Let's begin your onboarding journey together.
+                  {isExpired ? "Your session has expired. Please log in again to continue." : "I'm here to help you get started. Let's begin your onboarding journey together."}
                 </p>
                 <button
                   onClick={handleStartConversation}
                   className="btn-primary"
+                  disabled={isExpired}
                 >
-                  Start Conversation
+                  {isExpired ? "Session Expired" : "Start Conversation"}
                 </button>
               </motion.div>
             ) : (
@@ -856,13 +968,13 @@ const ConversationInterface = ({
                 type="text"
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
-                placeholder="Type your message..."
+                placeholder={isExpired ? "Session expired - please log in again" : "Type your message..."}
                 className="input-field pr-20 min-h-[44px]"
-                disabled={!isConversationStarted}
+                disabled={!isConversationStarted || isExpired}
               />
               <button
                 type="submit"
-                disabled={!message.trim() || !isConversationStarted}
+                disabled={!message.trim() || !isConversationStarted || isExpired}
                 className="absolute right-2 top-1/2 transform -translate-y-1/2 p-2 text-gray-400 hover:text-primary-600 disabled:opacity-50"
               >
                 <Send className="w-5 h-5" />

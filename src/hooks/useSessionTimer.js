@@ -65,13 +65,12 @@ export const useSessionTimer = () => {
   const updateTimeRemaining = useCallback(() => {
     const expiryTime = getSessionExpiry();
     if (!expiryTime) {
-      // If no session cookie found, check if we're already in expired state
-      // If not, this might be a fresh page load without a session
-      if (!isExpired) {
-        setTimeRemaining(null);
-        setShowWarning(false);
-        setIsExpired(false);
-      }
+      // If no session cookie found, this means the session has expired or been removed
+      // Treat this as an expired session and trigger logout
+      console.log('Session timer: No session cookie - treating as expired');
+      setTimeRemaining(0);
+      setShowWarning(false);
+      setIsExpired(true);
       return;
     }
 
@@ -169,7 +168,9 @@ export const useSessionTimer = () => {
 
   // Handle session expiry
   useEffect(() => {
+    console.log('Session timer: Expiry effect triggered', { isExpired, expiryHandled });
     if (isExpired && !expiryHandled) {
+      console.log('Session timer: Calling handleSessionExpiry');
       setExpiryHandled(true);
       handleSessionExpiry();
     }
