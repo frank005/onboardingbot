@@ -11,9 +11,12 @@ const SessionWarning = () => {
   const handleRefresh = async () => {
     try {
       await refreshSession();
+      // Show success message (you could use a toast library here)
+      console.log('Session refreshed successfully');
     } catch (error) {
       console.error('Failed to refresh session:', error);
       // If refresh fails, redirect to login
+      alert('Failed to refresh session. Please log in again.');
       window.location.href = '/login';
     }
   };

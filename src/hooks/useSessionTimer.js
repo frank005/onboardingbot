@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
-// Session expiry time in milliseconds (20 minutes)
-const SESSION_DURATION_MS = 20 * 60 * 1000;
+// Session expiry time in milliseconds (20 minutes) - used for reference
+// const SESSION_DURATION_MS = 20 * 60 * 1000;
 
 // Warning time before expiry (5 minutes before)
 const WARNING_TIME_MS = 5 * 60 * 1000;
@@ -96,7 +96,7 @@ export const useSessionTimer = () => {
       setShowWarning(remaining <= WARNING_TIME_MS);
       setIsExpired(false);
     }
-  }, [getSessionExpiry, isExpired]);
+  }, [getSessionExpiry]);
 
   // Format time remaining as MM:SS
   const formatTimeRemaining = useCallback((ms) => {
@@ -123,23 +123,61 @@ export const useSessionTimer = () => {
   }, []);
 
   // Track if we've already handled expiry to prevent multiple alerts
-  const [expiryHandled, setExpiryHandled] = useState(false);
+  const expiryHandledRef = useRef(false);
 
-  // Refresh session (placeholder for future implementation)
+  // Refresh session
   const refreshSession = useCallback(async () => {
-    // TODO: Implement session refresh endpoint
-    console.log('Session refresh not yet implemented');
+    try {
+      console.log('Session timer: Refreshing session...');
+      
+      const response = await fetch('/.netlify/functions/refresh-session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include', // Include cookies in the request
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to refresh session');
+      }
+
+      const data = await response.json();
+      console.log('Session timer: Session refreshed successfully');
+      
+      // Reset the expiry handled flag since we have a fresh session
+      expiryHandledRef.current = false;
+      
+      // Update the timer to reflect the new session
+      updateTimeRemaining();
+      
+      return data;
+    } catch (error) {
+      console.error('Session timer: Error refreshing session:', error);
+      throw error;
+    }
+  }, [updateTimeRemaining]);
+
+  // Reset expiry handled flag (useful when starting a new session)
+  const resetExpiryHandled = useCallback(() => {
+    expiryHandledRef.current = false;
   }, []);
 
   // Set up timer
   useEffect(() => {
-    // Initial check
-    updateTimeRemaining();
+    // Add a small delay for initial check to allow cookies to be set
+    const initialDelay = setTimeout(() => {
+      updateTimeRemaining();
+    }, 100);
 
     // Set up interval to check every second
     const interval = setInterval(updateTimeRemaining, 1000);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearTimeout(initialDelay);
+      clearInterval(interval);
+    };
   }, [updateTimeRemaining]);
 
   // Additional session validation - check if session is still valid on page focus/visibility
@@ -168,13 +206,13 @@ export const useSessionTimer = () => {
 
   // Handle session expiry
   useEffect(() => {
-    console.log('Session timer: Expiry effect triggered', { isExpired, expiryHandled });
-    if (isExpired && !expiryHandled) {
+    console.log('Session timer: Expiry effect triggered', { isExpired, expiryHandled: expiryHandledRef.current });
+    if (isExpired && !expiryHandledRef.current) {
       console.log('Session timer: Calling handleSessionExpiry');
-      setExpiryHandled(true);
+      expiryHandledRef.current = true;
       handleSessionExpiry();
     }
-  }, [isExpired, expiryHandled, handleSessionExpiry]);
+  }, [isExpired, handleSessionExpiry]);
 
   return {
     timeRemaining,
@@ -182,6 +220,7 @@ export const useSessionTimer = () => {
     isExpired,
     formatTimeRemaining,
     refreshSession,
-    updateTimeRemaining
+    updateTimeRemaining,
+    resetExpiryHandled
   };
 };

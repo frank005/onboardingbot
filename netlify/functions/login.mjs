@@ -40,6 +40,8 @@ function b64url(buf){
 function sign(b64){ return crypto.createHmac("sha256", SESSION_SECRET).update(b64).digest("hex"); }
 
 async function handler(request, context) {
+  console.log('Login function called with method:', request.method);
+  
   if (request.method !== "POST") {
     return new Response("Method Not Allowed", { status: 405 });
   }
@@ -47,7 +49,9 @@ async function handler(request, context) {
   let body;
   try { 
     body = await request.json(); 
+    console.log('Login request body:', { username: body.username, hasPassword: !!body.password });
   } catch { 
+    console.error('Login: Bad JSON in request body');
     return new Response("Bad JSON", { status: 400 }); 
   }
   const { username = "", password = "" } = body;
@@ -110,9 +114,12 @@ async function handler(request, context) {
     uRec.pw === password;
 
   if (!okUser) {
+    console.log('Login failed for user:', username, 'reason: invalid credentials or blocked');
     return new Response("Unauthorized", { status: 401 });
   }
 
+  console.log('Login successful for user:', username);
+  
   const payload = JSON.stringify({
     iat: Date.now(),
     exp: Date.now() + SESSION_MAX_AGE_SEC * 1000,
@@ -125,9 +132,12 @@ async function handler(request, context) {
   const token = `${tPayload}.${tSig}`;
 
   const cookie = [`session=${token}`, `Path=/`, `Secure`, `SameSite=Lax`, `Max-Age=${SESSION_MAX_AGE_SEC}`].join("; ");
-  return new Response("", {
+  
+  console.log('Login: Returning success response with cookie');
+  return new Response(JSON.stringify({ success: true, message: "Login successful" }), {
     status: 200,
     headers: {
+      "Content-Type": "application/json",
       "Set-Cookie": cookie,
     },
   });
