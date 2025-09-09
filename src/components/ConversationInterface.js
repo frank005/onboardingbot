@@ -102,6 +102,49 @@ const ConversationInterface = ({
     }
   }, [isExpired, agoraConnected, setConversation]);
 
+  // Handle component mount to check for stale Agora connections
+  useEffect(() => {
+    // Check if we have a stale Agora connection when component mounts
+    // This happens when navigating back to the conversation tab after visiting other tabs
+    const checkForStaleConnection = async () => {
+      try {
+        // Check if Agora service thinks it's connected but we don't have the UI state
+        const currentAgent = agoraService.getCurrentAgent();
+        const agoraServiceConnected = currentAgent.isConnected;
+        const hasStaleConnection = agoraServiceConnected && !agoraConnected;
+        
+        if (hasStaleConnection) {
+          console.log('🔄 Detected stale Agora connection - cleaning up');
+          
+          // Disconnect from Agora to clean up
+          await agoraService.disconnect();
+          setAgoraConnected(false);
+          setAgoraAgentId(null);
+          
+          // Reset conversation to allow fresh start
+          setConversation(prev => ({
+            ...prev,
+            status: 'idle',
+            messages: []
+          }));
+          
+          // Clear any pending profile updates
+          setProfileUpdates([]);
+          
+          // Reset processed message count and processed messages set
+          lastProcessedMessageCountRef.current = 0;
+          processedMessages.current.clear();
+          
+          toast.info('Conversation reset. You can start a new conversation.');
+        }
+      } catch (error) {
+        console.error('Error checking for stale connection:', error);
+      }
+    };
+
+    checkForStaleConnection();
+  }, []); // Only run on mount
+
   // Handle page visibility changes to reset conversation when user navigates away and back
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -125,6 +168,10 @@ const ConversationInterface = ({
         // Clear any pending profile updates
         setProfileUpdates([]);
         
+        // Reset processed message count and processed messages set
+        lastProcessedMessageCountRef.current = 0;
+        processedMessages.current.clear();
+        
         toast.info('Conversation reset. You can start a new conversation.');
       }
     };
@@ -136,13 +183,13 @@ const ConversationInterface = ({
     };
   }, [agoraConnected, setConversation]);
 
-  // Cleanup Agora connection only on unmount (no automatic conversation stopping)
+  // Cleanup Agora connection when component unmounts (e.g., navigating to other tabs)
   useEffect(() => {
     return () => {
-      // Only disconnect Agora clients, don't stop the conversation
+      // Disconnect Agora clients when navigating away from conversation tab
       if (agoraConnected) {
-        console.log('🔄 Disconnecting Agora clients on component unmount');
-        agoraService.disconnect();
+        console.log('🔄 Disconnecting Agora clients on component unmount (navigating away)');
+        agoraService.disconnect().catch(console.error);
       }
       
       // Cleanup profile subscription
