@@ -69,7 +69,6 @@ export default async (req, ctx) => {
     return ctx.next();
   }
 
-  const cookie = req.headers.get("cookie") || "";
   const match = cookie.match(/(?:^|; )session=([^;]+)/);
   if (!match) {
     // Redirect to login page with the original URL as a parameter
