@@ -14,6 +14,12 @@ export const useSessionTimer = () => {
   const [showWarning, setShowWarning] = useState(false);
   const [isExpired, setIsExpired] = useState(false);
 
+  // Check if bypass is active via URL parameter
+  const isBypassActive = useCallback(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get("bypass") === "true" || urlParams.get("dev") === "true";
+  }, []);
+
   // Parse session token to get expiry time
   const getSessionExpiry = useCallback(() => {
     try {
@@ -66,6 +72,14 @@ export const useSessionTimer = () => {
 
   // Calculate time remaining until session expires
   const updateTimeRemaining = useCallback(() => {
+    // Skip session checks if bypass is active
+    if (isBypassActive()) {
+      setTimeRemaining(null);
+      setShowWarning(false);
+      setIsExpired(false);
+      return;
+    }
+
     const expiryTime = getSessionExpiry();
     if (!expiryTime) {
       // If no session cookie found, this means the session has expired or been removed
@@ -99,7 +113,7 @@ export const useSessionTimer = () => {
       setShowWarning(remaining <= WARNING_TIME_MS);
       setIsExpired(false);
     }
-  }, [getSessionExpiry]);
+  }, [getSessionExpiry, isBypassActive]);
 
   // Format time remaining as MM:SS
   const formatTimeRemaining = useCallback((ms) => {
@@ -113,6 +127,11 @@ export const useSessionTimer = () => {
 
   // Handle session expiry
   const handleSessionExpiry = useCallback(() => {
+    // Skip if bypass is active
+    if (isBypassActive()) {
+      return;
+    }
+
     // console.log('Session timer: Handling session expiry');
 
     // Clear any existing session data
@@ -123,7 +142,7 @@ export const useSessionTimer = () => {
 
     // Redirect to login
     window.location.href = '/login';
-  }, []);
+  }, [isBypassActive]);
 
   // Track if we've already handled expiry to prevent multiple alerts
   const expiryHandledRef = useRef(false);
@@ -211,6 +230,11 @@ export const useSessionTimer = () => {
 
   // Handle session expiry
   useEffect(() => {
+    // Skip if bypass is active
+    if (isBypassActive()) {
+      return;
+    }
+
     // console.log('Session timer: Expiry effect triggered', { isExpired, expiryHandled: expiryHandledRef.current, globalExpiryHandled });
     if (isExpired && !expiryHandledRef.current && !globalExpiryHandled) {
       // console.log('Session timer: Calling handleSessionExpiry');
@@ -218,7 +242,7 @@ export const useSessionTimer = () => {
       globalExpiryHandled = true; // Prevent other instances from handling expiry
       handleSessionExpiry();
     }
-  }, [isExpired, handleSessionExpiry]);
+  }, [isExpired, handleSessionExpiry, isBypassActive]);
 
   return {
     timeRemaining,
