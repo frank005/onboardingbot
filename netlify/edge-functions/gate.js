@@ -57,8 +57,10 @@ export default async (req, ctx) => {
 
   const urlBypass = url.searchParams.get("bypass") === "true" || url.searchParams.get("dev") === "true";
   const envBypass = Deno.env.get("BYPASS_AUTH") === "true" || Deno.env.get("BYPASS_AUTH") === "1";
+  const cookie = req.headers.get("cookie") || "";
+  const cookieBypass = cookie.includes("auth_bypass=true");
   
-  if (urlBypass || envBypass) {
+  if (urlBypass || envBypass || cookieBypass) {
     return ctx.next();
   }
 

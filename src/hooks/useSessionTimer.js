@@ -14,10 +14,12 @@ export const useSessionTimer = () => {
   const [showWarning, setShowWarning] = useState(false);
   const [isExpired, setIsExpired] = useState(false);
 
-  // Check if bypass is active via URL parameter
+  // Check if bypass is active via URL parameter or localStorage
   const isBypassActive = useCallback(() => {
     const urlParams = new URLSearchParams(window.location.search);
-    return urlParams.get("bypass") === "true" || urlParams.get("dev") === "true";
+    const urlBypass = urlParams.get("bypass") === "true" || urlParams.get("dev") === "true";
+    const storedBypass = localStorage.getItem('auth_bypass') === 'true';
+    return urlBypass || storedBypass;
   }, []);
 
   // Parse session token to get expiry time
