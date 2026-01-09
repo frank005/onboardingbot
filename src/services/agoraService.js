@@ -493,6 +493,7 @@ class AgoraService {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
       });
 
       if (!response.ok) {
@@ -529,6 +530,7 @@ class AgoraService {
           headers: {
             'Content-Type': 'application/json',
           },
+          credentials: 'include',
           body: JSON.stringify({
             channelName,
             agentUid,
@@ -602,6 +604,7 @@ class AgoraService {
                     headers: {
                       'Content-Type': 'application/json',
                     },
+                    credentials: 'include',
                     body: JSON.stringify({
                       agentId: this.currentAgentId,
                       messageType: 'text',
@@ -640,6 +643,7 @@ class AgoraService {
                     headers: {
                       'Content-Type': 'application/json',
                     },
+                    credentials: 'include',
                     body: JSON.stringify({
                       agentId: this.currentAgentId,
                       messageType: 'image',
@@ -680,6 +684,7 @@ class AgoraService {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify({ agentId: agentToInterrupt }),
       });
 
@@ -711,6 +716,7 @@ class AgoraService {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify({ agentId: agentToStop }),
       });
 
@@ -808,7 +814,9 @@ class AgoraService {
   // Get Agora configuration status
   async getConfigStatus() {
     try {
-      const response = await fetch(`${this.baseUrl}/api/agora/config`);
+      const response = await fetch(`${this.baseUrl}/api/agora/config`, {
+        credentials: 'include',
+      });
 
       if (!response.ok) {
         const errorData = await response.json();

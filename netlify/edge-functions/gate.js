@@ -5,6 +5,7 @@ const PUBLIC_PATHS = [
   "/login.html",                  // simple login page
   "/.netlify/functions/login",    // login API
   "/.netlify/functions/auth-admin", // admin API (for local testing)
+  "/api/",                        // API endpoints
   "/favicon.ico",
   "/robots.txt",
   "/manifest.webmanifest",
