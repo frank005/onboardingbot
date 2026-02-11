@@ -1,6 +1,6 @@
 # Separating Speech From Structure: A Guide to skip_patterns in Agora Conversational AI
 
-Title: 
+*Idea Titles:* 
   Benefit / concept
   • Say Less, Parse More: Using skip_patterns in Agora Conversational AI — Highlights the main idea (speech vs. parsed data).
   • One Response, Two Channels: What skip_patterns Can Do in Agora Conversational AI — One answer, different uses for speech and app logic.
@@ -21,6 +21,7 @@ Title:
 Your voice agent can say one thing and mean another—and that’s by design. The Agora Conversational AI engine lets you mark parts of the LLM’s response so they’re **skipped by TTS** but **still appear in the transcript**. That split is what makes it possible to drive UI, sync profile data, or show code without the agent reading hundreds of lines aloud.
 
 This post is about **different ways to use `skip_patterns`**: what it is, why it matters, how the pipeline works, and how several real apps use it—including voice coding, live shopping, onboarding, and a support-style agent (code + reference links). Where we can, we include screenshots and repo links; one pattern is used in a production support bot we don’t share here.
+*End Titles*
 
 ---
 
