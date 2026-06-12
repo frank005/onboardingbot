@@ -2,10 +2,10 @@
 // Generates an Agora RTC+RTM token for a channel/uid pair
 // Returns { token: null } if AGORA_APP_CERTIFICATE is not set (tokenless mode)
 
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
-require('./utils/AccessToken2.js');
-const { RtcTokenBuilder, RtcRole } = require('./utils/RtcTokenBuilder2.js');
+// Static import lets esbuild bundle the CJS utils into the function.
+// RtcTokenBuilder2.js internally requires AccessToken2.js, so esbuild follows the chain.
+import rtcTokenBuilderModule from './utils/RtcTokenBuilder2.js';
+const { RtcTokenBuilder, RtcRole } = rtcTokenBuilderModule;
 
 const corsHeaders = {
   "Content-Type": "application/json",

@@ -2,10 +2,9 @@
 // Creates an Agora agent via Agora REST API
 
 import axios from 'axios';
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
-require('./utils/AccessToken2.js');
-const { RtcTokenBuilder, RtcRole } = require('./utils/RtcTokenBuilder2.js');
+// Static import lets esbuild bundle the CJS utils into the function.
+import rtcTokenBuilderModule from './utils/RtcTokenBuilder2.js';
+const { RtcTokenBuilder, RtcRole } = rtcTokenBuilderModule;
 
 const handler = async (req, ctx) => {
   try {
