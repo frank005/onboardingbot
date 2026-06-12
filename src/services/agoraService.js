@@ -93,28 +93,41 @@ class AgoraService {
   }
 
   // Initialize RTC and Signaling clients
-  async initializeClients(appId, uid) {
+  async initializeClients(appId, uid, channelName = null) {
     try {
       // Wait for both SDKs to load
       const [AgoraRTCInstance, AgoraRTMInstance] = await Promise.all([
         waitForAgoraRTC(),
         waitForAgoraRTM()
       ]);
-      
+
       console.log('🔍 AgoraRTC loaded successfully:', typeof AgoraRTCInstance);
       console.log('🔍 AgoraRTM loaded successfully:', typeof AgoraRTMInstance);
       console.log('🔍 AgoraRTM.createInstance:', typeof AgoraRTMInstance.createInstance);
-      
+
       // Store SDK instances for later use
       this.agoraRTC = AgoraRTCInstance;
       this.agoraRTM = AgoraRTMInstance;
-      
+
       // Initialize RTC Engine
       this.rtcEngine = AgoraRTCInstance.createClient({ mode: 'rtc', codec: 'vp8' });
-      
+
       // Initialize Signaling Client (RTM) - RTM v2.x style
       const clientUid = uid || Math.floor(Math.random() * 1000000) + 1000;
       console.log('🔍 Creating RTM client with UID:', clientUid);
+
+      // Fetch one combined RTC+RTM token; reused for RTM login AND the RTC join below.
+      // If AGORA_APP_CERTIFICATE isn't set the backend returns {token: null}, falling back to tokenless mode.
+      let combinedToken = null;
+      if (channelName) {
+        combinedToken = await this._fetchToken(channelName, clientUid);
+        if (combinedToken) {
+          this._cachedToken = { token: combinedToken, channelName, uid: clientUid.toString() };
+          console.log('✅ Fetched combined RTC+RTM token (length:', combinedToken.length, ')');
+        } else {
+          console.warn('⚠️ Token fetch returned null — using tokenless RTM (will fail if dynamic key is enabled)');
+        }
+      }
       // console.log('🔍 RTM App ID being used:', appId);
       // console.log('🔍 RTM App ID length:', appId.length);
       // console.log('🔍 RTM App ID type:', typeof appId);
@@ -122,16 +135,15 @@ class AgoraService {
       // console.log('🔍 RTM App ID trimmed:', appId.trim());
       
       this.rtmClient = new AgoraRTMInstance(appId.trim(), clientUid.toString(), {
-        token: null, // No token for testing
         logUpload: false,
         logLevel: 'INFO'
       });
-      
+
       console.log('✅ RTM v2.x client created:', this.rtmClient);
-      
-      // Login to RTM
-      console.log('🔍 Logging into RTM...');
-      await this.rtmClient.login({token: null});
+
+      // Login to RTM with combined token (null in tokenless mode)
+      console.log('🔍 Logging into RTM with token:', combinedToken ? 'present' : 'null (tokenless)');
+      await this.rtmClient.login({ token: combinedToken });
       console.log('✅ RTM login successful');
       
       // Initialize ConversationalAIAPI using the proper init method
@@ -169,6 +181,16 @@ class AgoraService {
     }
   }
 
+  // Reuse the combined token from initializeClients when (channelName, uid) match;
+  // otherwise fetch a fresh one.
+  async _getTokenFor(channelName, uid) {
+    const cached = this._cachedToken;
+    if (cached && cached.channelName === channelName && cached.uid === uid.toString()) {
+      return cached.token;
+    }
+    return await this._fetchToken(channelName, uid);
+  }
+
   // Join RTC channel
   async joinRTCChannel(channelName, uid, token = null) {
     if (!this.rtcEngine) {
@@ -176,8 +198,8 @@ class AgoraService {
     }
 
     try {
-      // Fetch token from server if not provided
-      const rtcToken = token !== null ? token : await this._fetchToken(channelName, uid);
+      // Fetch token from server if not provided (reuses cached combined token when available)
+      const rtcToken = token !== null ? token : await this._getTokenFor(channelName, uid);
       const appId = window.REACT_APP_AGORA_APP_ID || process.env.REACT_APP_AGORA_APP_ID || 'your_agora_app_id';
       // console.log('🔍 Using App ID:', appId);
       await this.rtcEngine.join(

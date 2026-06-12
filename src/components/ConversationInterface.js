@@ -360,7 +360,7 @@ const ConversationInterface = ({
       // console.log('🔍 Using Client UID:', clientUid);
       
       // Initialize Agora clients
-      await agoraService.initializeClients(appId, clientUid);
+      await agoraService.initializeClients(appId, clientUid, channelName);
       
       // Join RTC channel
       await agoraService.joinRTCChannel(channelName, clientUid);
@@ -636,7 +636,7 @@ const ConversationInterface = ({
       const appId = window.REACT_APP_AGORA_APP_ID || process.env.REACT_APP_AGORA_APP_ID || 'your_agora_app_id';
       const clientUid = Math.floor(Math.random() * 10000);
       
-      await agoraService.initializeClients(appId, clientUid);
+      await agoraService.initializeClients(appId, clientUid, channelName);
       
       // Join RTC channel
       await agoraService.joinRTCChannel(channelName, clientUid);
