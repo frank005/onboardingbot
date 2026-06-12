@@ -9,6 +9,12 @@ const isNode = typeof process !== 'undefined' && process.versions && process.ver
 let nodeCrypto = null
 let pako = null
 
+// Prefer pako injected via globalThis (lets the bundled ESM caller statically import
+// pako and pass it in — works around esbuild not tracing require() inside try/catch).
+if (typeof globalThis !== 'undefined' && globalThis.pako) {
+    pako = globalThis.pako
+}
+
 if (isNode) {
     try {
         nodeCrypto = require('crypto')
@@ -17,15 +23,17 @@ if (isNode) {
             global.TextEncoder = require('util').TextEncoder
             global.TextDecoder = require('util').TextDecoder
         }
-        // Load pako for Node.js
-        pako = require('pako')
+        // Load pako for Node.js (fallback if not already injected via globalThis)
+        if (!pako) {
+            pako = require('pako')
+        }
     } catch (e) {
         // Fallback to Web Crypto
         console.warn('Failed to load Node.js modules:', e.message)
     }
 } else {
     // Browser environment - pako should be loaded via script tag
-    if (typeof window !== 'undefined' && window.pako) {
+    if (!pako && typeof window !== 'undefined' && window.pako) {
         pako = window.pako
     }
 }

@@ -2,6 +2,11 @@
 // Creates an Agora agent via Agora REST API
 
 import axios from 'axios';
+// Statically import pako so esbuild bundles it, then inject into globalThis
+// so AccessToken2.js (loaded transitively) can pick it up without a dynamic require.
+import * as pakoModule from 'pako';
+globalThis.pako = pakoModule.default || pakoModule;
+
 // Static import lets esbuild bundle the CJS utils into the function.
 import rtcTokenBuilderModule from './utils/RtcTokenBuilder2.js';
 const { RtcTokenBuilder, RtcRole } = rtcTokenBuilderModule;
