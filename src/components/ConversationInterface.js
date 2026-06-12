@@ -414,16 +414,21 @@ const ConversationInterface = ({
         
           if (chatHistory && chatHistory.length > 0) {
             console.log(`🔍 [${eventId}] Chat history length:`, chatHistory.length, 'Last processed count:', lastProcessedMessageCountRef.current);
-            
-            // Only process new messages since the last event
-            const newMessages = chatHistory.slice(lastProcessedMessageCountRef.current);
-            console.log(`🔍 [${eventId}] Processing`, newMessages.length, 'new messages');
-            
-            // If no new messages, skip processing
-            if (newMessages.length === 0) {
-              console.log(`🔄 [${eventId}] No new messages to process, skipping`);
-              return;
-            }
+
+            // Newer ConvoAI emits partial updates by REPLACING the trailing temp item
+            // in place (chatHistory.length doesn't grow between partials) and then
+            // pushes the final on top (still same length when the partial occupied a
+            // temp slot). So we must always re-check the LAST item even if length
+            // hasn't advanced — otherwise we miss the partial-to-final transition
+            // (and never trigger profile markers / final captions).
+            const startIdx = Math.min(
+              lastProcessedMessageCountRef.current,
+              Math.max(0, chatHistory.length - 1)
+            );
+            const newMessages = chatHistory.slice(startIdx);
+            console.log(`🔍 [${eventId}] Processing`, newMessages.length, 'messages from index', startIdx);
+
+            // (No length-only skip — dedup inside the loop handles repeated content)
             
             // Process messages first, then update the count to prevent race conditions
             for (const message of newMessages) {
