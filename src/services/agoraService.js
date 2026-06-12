@@ -153,6 +153,22 @@ class AgoraService {
     }
   }
 
+  // Fetch token from server
+  async _fetchToken(channelName, uid) {
+    try {
+      const resp = await fetch('/api/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channelName, uid: uid.toString() })
+      });
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      return data.token || null;
+    } catch {
+      return null;
+    }
+  }
+
   // Join RTC channel
   async joinRTCChannel(channelName, uid, token = null) {
     if (!this.rtcEngine) {
@@ -160,13 +176,14 @@ class AgoraService {
     }
 
     try {
-      // For testing without tokens, pass null as token
+      // Fetch token from server if not provided
+      const rtcToken = token !== null ? token : await this._fetchToken(channelName, uid);
       const appId = window.REACT_APP_AGORA_APP_ID || process.env.REACT_APP_AGORA_APP_ID || 'your_agora_app_id';
       // console.log('🔍 Using App ID:', appId);
       await this.rtcEngine.join(
         appId,
         channelName,
-        null, // Always pass null for token to disable token authentication
+        rtcToken,
         uid
       );
 

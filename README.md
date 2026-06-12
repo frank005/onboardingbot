@@ -2,6 +2,45 @@
 
 A comprehensive conversational AI demo showcasing user onboarding with voice integration, data collection, and analytics. **Enhanced with Agora's official Conversational AI API, AI Avatar support, and advanced multimodal capabilities.**
 
+---
+
+## 🆕 Recent Changes
+
+### Agora Presets (ASR, LLM, TTS)
+The agent now supports **Agora-managed presets** so you no longer need vendor API keys. Set any of the following env vars to use presets (Agora handles the keys):
+- `ASR_PRESET` — `deepgram_nova_2`, `deepgram_nova_3` (or leave blank for `ares`)
+- `LLM_PRESET` — `openai_gpt_4o_mini`, `openai_gpt_4_1_mini`, `openai_gpt_5_nano`, `openai_gpt_5_mini`
+- `TTS_PRESET` — `minimax_speech_2_6_turbo`, `minimax_speech_2_8_turbo`, `openai_tts_1`
+
+When a preset is set, the corresponding API key (`OPENAI_API_KEY`, `MICROSOFT_TTS_API_KEY`) is **not** needed. Leaving a preset blank falls back to the original env-var key mode.
+
+Vendor-specific preset params:
+- MiniMax: `TTS_MINIMAX_VOICE_ID`, `TTS_MINIMAX_SAMPLE_RATE`
+- OpenAI TTS: `TTS_OPENAI_VOICE`, `TTS_OPENAI_SPEED`
+- LLM: `LLM_TEMPERATURE`, `LLM_MAX_TOKENS`, `LLM_MAX_HISTORY` (apply in both preset and key mode)
+
+### Token Authentication
+Added support for App-Certificate-based RTC tokens:
+- New env var `AGORA_APP_CERTIFICATE` enables token mode
+- New endpoint `/api/token` (Netlify function `token.mjs`) returns combined RTC+RTM tokens for clients
+- Agent token is generated server-side in `agora-agents.mjs`
+- If `AGORA_APP_CERTIFICATE` is not set, falls back to tokenless mode (App ID only)
+
+### Login System Removed
+The previous Netlify Blobs auth/login system has been removed entirely:
+- Deleted `login.mjs`, `auth-admin.mjs`, `refresh-session.mjs` Netlify functions
+- Deleted `gate.js` edge function and `public/login.html`
+- Removed `[[edge_functions]]` and `[[blobs]]` blocks from `netlify.toml`
+- Removed auth-bypass logic and `<SessionWarning />` from `App.js`
+- `useSessionTimer` hook is now a no-op (kept for compatibility with `ConversationInterface` and `Navigation`)
+
+Auth-related env vars no longer needed: `SESSION_SECRET`, `MASTER_EMAIL`, `MASTER_PASSWORD`, `ALLOWED_USERS`, `NETLIFY_SITE_ID`, `NETLIFY_BLOBS_TOKEN`, `BYPASS_AUTH`.
+
+A different OAuth provider will be wired in later.
+
+---
+
+
 ## 🎯 Project Overview
 
 This demo demonstrates how Agora's conversational AI can be used for user onboarding, featuring:

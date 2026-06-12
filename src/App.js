@@ -6,7 +6,6 @@ import UserProfile from './components/UserProfile';
 import Analytics from './components/Analytics';
 import Settings from './components/Settings';
 import Navigation from './components/Navigation';
-import SessionWarning from './components/SessionWarning';
 import { useConversation } from './hooks/useConversation';
 import { useUser } from './hooks/useUser';
 import clientConfigService from './services/clientConfigService';
@@ -19,23 +18,6 @@ function App() {
   const { conversation, startConversation, sendMessage, upgradeToAgora, setConversation } = useConversation(ttsEnabled);
 
   useEffect(() => {
-    // Check for bypass parameter and persist it
-    const urlParams = new URLSearchParams(window.location.search);
-    const bypassActive = urlParams.get("bypass") === "true" || urlParams.get("dev") === "true";
-    
-    if (bypassActive) {
-      localStorage.setItem('auth_bypass', 'true');
-      // Set cookie for server-side gate to check
-      document.cookie = 'auth_bypass=true; path=/; max-age=86400'; // 24 hours
-    } else {
-      // Check if bypass is already in localStorage
-      const storedBypass = localStorage.getItem('auth_bypass');
-      if (storedBypass === 'true') {
-        // Set cookie if localStorage has bypass but cookie might be missing
-        document.cookie = 'auth_bypass=true; path=/; max-age=86400';
-      }
-    }
-
     // Load configuration using the client config service
     const loadConfig = async () => {
       try {
@@ -73,8 +55,7 @@ function App() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Navigation user={user} />
-      <SessionWarning />
-      
+
       <main className="container mx-auto px-4 py-8">
         <Routes>
           <Route 

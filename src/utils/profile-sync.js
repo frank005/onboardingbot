@@ -208,7 +208,7 @@ export function applyJoinDefaults(joinPayload) {
     enable_error_message: true,
   };
   
-  // Ensure TTS skips [ ... ] (skip_patterns=[4])
+  // Ensure TTS skips [ ... ] so profile markers are in transcript but not spoken (Agora skip_patterns code 4).
   const tts = joinPayload.properties.tts ?? {};
   tts.skip_patterns = Array.isArray(tts.skip_patterns)
     ? Array.from(new Set([...tts.skip_patterns, 4]))

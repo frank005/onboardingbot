@@ -4,10 +4,6 @@
   publish = "build"
   functions = "netlify/functions"
 
-[[edge_functions]]
-  path = "/*"
-  function = "gate"
-
 # Disable secrets scanning for environment variable names
 [build.environment]
   SECRETS_SCAN_ENABLED = "false"
@@ -17,6 +13,11 @@
 [[redirects]]
   from = "/api/health"
   to   = "/.netlify/functions/health"
+  status = 200
+
+[[redirects]]
+  from = "/api/token"
+  to   = "/.netlify/functions/token"
   status = 200
 
 [[redirects]]
@@ -39,11 +40,6 @@
   to   = "/.netlify/functions/agora-agents-stop"
   status = 200
 
-[[redirects]]
-  from = "/api/conversation/stop/*"
-  to   = "/.netlify/functions/conversation-stop"
-  status = 200
-
 # --- SPA catch-all LAST ---
 [[redirects]]
   from = "/*"
@@ -53,10 +49,6 @@
 [functions]
   node_bundler = "esbuild"
   external_node_modules = []
-
-# Configure Netlify Blobs
-[[blobs]]
-  name = "auth"
 
 [[headers]]
   for = "/*"
