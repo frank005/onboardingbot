@@ -299,7 +299,17 @@ END_PROFILE_CONTEXT`;
     // Generate agent token if certificate is configured
     let agentToken = '';
     const appCertificate = process.env.AGORA_APP_CERTIFICATE;
+    console.log('🔐 [AGENT TOKEN] AGORA_APP_CERTIFICATE:', appCertificate ? `present (${appCertificate.length} chars)` : 'MISSING');
+    console.log('🔐 [AGENT TOKEN] AGORA_APP_ID:', process.env.AGORA_APP_ID ? `present (${process.env.AGORA_APP_ID.length} chars)` : 'MISSING');
+    console.log('🔐 [AGENT TOKEN] RtcTokenBuilder available:', !!RtcTokenBuilder, '| RtcRole.PUBLISHER:', RtcRole?.PUBLISHER);
+
     if (appCertificate && process.env.AGORA_APP_ID) {
+      if (!RtcTokenBuilder || !RtcRole) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'Token builder failed to load — agent cannot join token-enabled channel'
+        }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+      }
       try {
         const TTL = 3600;
         const expireAt = Math.floor(Date.now() / 1000) + TTL;
@@ -312,9 +322,19 @@ END_PROFILE_CONTEXT`;
           expireAt,
           expireAt
         );
+        console.log('🔐 [AGENT TOKEN] Generated for channel=', channelName, 'uid=', agentUid.toString(), 'length=', agentToken?.length, 'preview=', agentToken?.substring(0, 20) + '...');
+        if (!agentToken) {
+          throw new Error('buildTokenWithRtm returned empty token');
+        }
       } catch (tokenErr) {
-        console.error('⚠️ Failed to generate agent token:', tokenErr);
+        console.error('❌ [AGENT TOKEN] Generation failed:', tokenErr);
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'Agent token generation failed: ' + (tokenErr?.message || String(tokenErr))
+        }), { status: 500, headers: { 'Content-Type': 'application/json' } });
       }
+    } else {
+      console.log('🔐 [AGENT TOKEN] Skipping token generation (no certificate) — sending empty token');
     }
 
     // Generate agent configuration with required payload parameters
