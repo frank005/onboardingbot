@@ -48,7 +48,9 @@
 
 [functions]
   node_bundler = "esbuild"
-  external_node_modules = []
+  # pako kept external — esbuild can't trace it through AccessToken2.js's try/catch require,
+  # so leave it as a runtime require and let Netlify ship it in the function's node_modules.
+  external_node_modules = ["pako"]
   included_files = ["netlify/functions/utils/**"]
 
 [[headers]]
