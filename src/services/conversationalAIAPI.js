@@ -745,6 +745,21 @@ class ConversationalAIAPI extends EventHelper {
             onMessageError: this.onMessageError.bind(this),
             expectedAgentId: this.expectedAgentId // Pass expected agent ID to controller
         });
+
+        // Back-compat shim: older consumer code attaches listeners on
+        // covSubRenderController directly (covSubRenderController.on(evt, fn)).
+        // Proxy those to the API's own event emitter so events fire correctly.
+        const api = this;
+        this.covSubRenderController.on = (evt, fn) => api.on(evt, fn);
+        this.covSubRenderController.off = (evt, fn) => api.off(evt, fn);
+        this.covSubRenderController.removeListener = (evt, fn) => api.off(evt, fn);
+        this.covSubRenderController.removeAllListeners = (evt) => {
+            if (evt && api.eventListeners.has(evt)) {
+                api.eventListeners.get(evt).length = 0;
+            } else if (!evt) {
+                api.removeAllListeners();
+            }
+        };
     }
 
     // Singleton pattern
