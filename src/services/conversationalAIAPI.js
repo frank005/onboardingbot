@@ -57,12 +57,10 @@ class EventHelper {
     }
 
     on(event, handler) {
-        console.log(`🔗 EventHelper.on: Registering handler for event: ${event}`);
         if (!this.eventListeners.has(event)) {
             this.eventListeners.set(event, []);
         }
         this.eventListeners.get(event).push(handler);
-        console.log(`🔗 Total handlers for ${event}: ${this.eventListeners.get(event).length}`);
     }
 
     off(event, handler) {
@@ -76,10 +74,8 @@ class EventHelper {
     }
 
     emit(event, ...args) {
-        console.log(`📡 EventHelper.emit: ${event} with ${args.length} arguments`);
         if (this.eventListeners.has(event)) {
             const handlers = this.eventListeners.get(event);
-            console.log(`📡 Found ${handlers.length} handlers for event: ${event}`);
             handlers.forEach(handler => {
                 try {
                     handler(...args);
@@ -87,8 +83,6 @@ class EventHelper {
                     console.error(`Error in event handler for ${event}:`, error);
                 }
             });
-        } else {
-            console.log(`📡 No handlers found for event: ${event}`);
         }
     }
 
@@ -100,9 +94,8 @@ class EventHelper {
 /**
  * Simple SubRender Controller for handling subtitle messages
  */
-class CovSubRenderController extends EventHelper {
+class CovSubRenderController {
     constructor(options = {}) {
-        super(); // Call parent constructor
         console.log('CovSubRenderController v1.1 loaded - improved duplicate detection');
         
         this.mode = options.mode || ESubtitleHelperMode.UNKNOWN;
@@ -121,8 +114,25 @@ class CovSubRenderController extends EventHelper {
         
         this.agentStates = new Map(); // Track agent states
         this.processedContentHashes = new Set(); // Track processed content hashes to prevent duplicates
-        this.processedKeys = new Map(); // New map for deduplication based on content and speaker
-        this.processedUserMessages = new Set(); // Track processed user messages to prevent duplicates
+        this.greetingMessage = options.greetingMessage || null; // Store greeting message for duplicate detection
+        this.lastGreetingMessageTime = null; // Track when we last processed a greeting message
+    }
+
+    // Helper method to get greeting message from DOM if not provided
+    getGreetingMessage() {
+        if (this.greetingMessage) {
+            return this.greetingMessage;
+        }
+        // Try to get from DOM elements
+        const gMsgElement = document.getElementById('gMsg');
+        const mllmGreetingElement = document.getElementById('mllmGreetingMessage');
+        if (gMsgElement && gMsgElement.value) {
+            return gMsgElement.value.trim();
+        }
+        if (mllmGreetingElement && mllmGreetingElement.value) {
+            return mllmGreetingElement.value.trim();
+        }
+        return null;
     }
 
     setMode(mode) {
@@ -146,28 +156,25 @@ class CovSubRenderController extends EventHelper {
 
     handleMessage(message, context) {
         try {
-            console.log('=== MESSAGE HANDLER DEBUG ===');
-            console.log('Received message:', message);
-            console.log('Message object:', message.object);
-            console.log('Message module:', message.module);
-            console.log('Context:', context);
+            // Verbose logging removed - uncomment for debugging if needed
+            // console.log('=== MESSAGE HANDLER DEBUG ===');
+            // console.log('Received message:', message);
             
-            if (message.object === 'assistant.transcript' || message.object === 'assistant.transcription' || message.object === 'user.transcription') {
+            if (message.object === 'assistant.transcription' || message.object === 'user.transcription') {
                 // Handle transcription messages
-                console.log('Found transcription message:', message.object);
+                // console.log('Found transcription message:', message.object);
                 this.handleTranscriptionMessage(message, context);
             } else if (message.object === 'message.info' || message.object === 'message.error') {
                 // Handle image upload responses
-                console.log('✅ Found image message response:', message);
-                console.log('Message object:', message.object);
-                console.log('Message module:', message.module);
+                // console.log('✅ Found image message response:', message);
                 this.handleImageMessageResponse(message, context);
             } else if (message.text || message.content) {
                 // Handle any message with text content as potential transcription
-                console.log('Found message with text content, treating as transcription:', message);
+                // console.log('Found message with text content, treating as transcription:', message);
                 this.handleTranscriptionMessage(message, context);
             } else {
-                console.log('❌ Unhandled message type:', message.type || message.customType || message.object, message);
+                // Only log unhandled types for debugging
+                // console.log('❌ Unhandled message type:', message.type || message.customType || message.object);
             }
         } catch (error) {
             console.error('Error handling message:', error);
@@ -178,31 +185,23 @@ class CovSubRenderController extends EventHelper {
     }
 
     handleTranscriptionMessage(message, context) {
-        // Clean up old processed keys to prevent memory bloat
-        const currentTime = Date.now();
-        const timeThreshold = 30000; // 30 seconds threshold for cleanup
-        for (const [key, timestamp] of this.processedKeys.entries()) {
-            if (currentTime - timestamp > timeThreshold) {
-                this.processedKeys.delete(key);
-            }
+        // Check if this is a user transcription - if so, finalize any pending agent transcriptions
+        if (message.object === 'user.transcription' || (message.speaker && message.speaker.includes('User'))) {
+            console.log('User transcription detected, finalizing pending agent transcriptions');
+            this.finalizeAllPendingTranscriptions();
         }
         
-        // Create unique key using messageId and turnId for precise deduplication
-        const turnId = message.turn_id || message.turnId || '';
-        const messageId = message.message_id || message.messageId || '';
-        const text = message.text || message.content || '';
-        
-        // Create a unique key using messageId (most reliable) or turnId + text
-        const uniqueKey = messageId || `${turnId}:${text.trim()}`;
-        
-        // Check if we've already processed this exact message
-        if (this.processedKeys.has(uniqueKey)) {
-            console.log('🔄 Skipping duplicate message (exact match):', uniqueKey);
+        // Check for duplicate message ID
+        const messageId = message.message_id || message.id;
+        if (messageId && this.processedMessageIds.has(messageId)) {
+            console.log('Skipping duplicate message ID:', messageId);
             return;
         }
         
-        // Mark this message as processed
-        this.processedKeys.set(uniqueKey, currentTime);
+        // Create unique key using content + turn_id for better deduplication
+        const turnId = message.turn_id || message.turnId || '';
+        const text = message.text || message.content || '';
+        const contentKey = `${text.trim()}:${turnId}`;
         
         // Determine if this is a final transcription
         let isFinal = message.is_final || message.final || false;
@@ -212,44 +211,92 @@ class CovSubRenderController extends EventHelper {
             isFinal = message.turn_status === 1;
         }
         
+        // Check if this is an assistant/agent message
+        const isAssistantMessage = message.type === EMessageType.AGENT_TRANSCRIPTION || 
+            message.customType === 'assistant.transcription' ||
+            message.object === 'assistant.transcription';
+        
+        // Check if this message exactly matches the greeting message
+        const greetingMessage = this.getGreetingMessage();
+        const isExactGreetingMatch = isAssistantMessage && greetingMessage && text.trim() === greetingMessage;
+        
+        // Check for duplicate using the content key, but allow final messages to override non-final ones
+        // Also allow greeting messages if they exactly match the configured greeting message (and enough time has passed)
+        if (this.processedMessageIds.has(contentKey)) {
+            // If this is a final message and we've already processed a non-final version, allow it
+            if (isFinal) {
+                console.log('Allowing final message to override non-final version:', contentKey);
+                // Remove the non-final version from processed set so we can process the final one
+                this.processedMessageIds.delete(contentKey);
+            } else if (isExactGreetingMatch) {
+            // For greeting messages, check if a final version already exists in chat history
+            // We only want one greeting message that goes final, and don't display duplicates within 1-2 seconds
+            const existingFinalGreeting = this.chatHistory.find(item => 
+                item.data && 
+                item.data.text === text.trim() &&
+                item.data.speaker && item.data.speaker.includes('Assistant') &&
+                !item.id.toString().startsWith('temp-')
+            );
+            
+            const now = Date.now();
+            if (existingFinalGreeting) {
+                // There's already a final greeting in chat history
+                if (this.lastGreetingMessageTime && (now - this.lastGreetingMessageTime) < 2000) {
+                    // Final greeting was added within last 2 seconds, skip it to prevent duplicates
+                    console.log('Skipping duplicate greeting message (final version exists and was added recently):', contentKey);
+                    return;
+                } else {
+                    // Final greeting exists but enough time has passed - this might be agent restart
+                    // However, we should still skip it to prevent duplicates in the same conversation
+                    // Only allow if we can determine it's truly a new conversation (which is hard to detect)
+                    // For now, skip it if a final greeting already exists
+                    console.log('Skipping duplicate greeting message (final version already exists in chat history):', contentKey);
+                    return;
+                }
+            } else if (this.lastGreetingMessageTime && (now - this.lastGreetingMessageTime) < 2000) {
+                // No final greeting exists but one was processed recently, skip it
+                console.log('Skipping duplicate greeting message (processed recently):', contentKey);
+                return;
+            } else {
+                // No final greeting exists and enough time has passed (or first time), allow it
+                console.log('Allowing greeting message (no final version exists):', contentKey);
+                // Remove from processed set so we can process it
+                this.processedMessageIds.delete(contentKey);
+                // Note: We don't set lastGreetingMessageTime here - only set it when we add final message to chat history
+            }
+            } else {
+                console.log('Skipping duplicate content in turn:', contentKey);
+                return;
+            }
+        }
+        
+        // Add content key to processed set
+        // Note: We don't set lastGreetingMessageTime here for non-final messages
+        // We only set it when we actually add a final greeting to chat history
+        this.processedMessageIds.add(contentKey);
+        
+        // Periodically clear old turn_ids to prevent memory bloat
+        if (this.processedMessageIds.size > 50) {
+            console.log('Clearing processed message IDs to prevent memory bloat');
+            this.processedMessageIds.clear();
+        }
+        
         // DEBUG: Log full message structure to understand available fields
         console.log('DEBUG - Full message structure:', JSON.stringify(message, null, 2));
         
-        // Determine speaker based on message type/object - use consistent naming
+        // Log the transcription text prominently
+        const transcriptionText = message.text || message.content || '';
+        if (transcriptionText) {
+            // console.log('🎤 TRANSCRIPTION TEXT:', transcriptionText);
+        }
+        
+        // Determine speaker based on message type/object
         let speaker;
         let agentUserId = context.publisher;
         
-        // Skip user transcription messages from the agent to prevent duplicates
-        // The user's own transcription is handled separately
-        // BUT allow the first user response for profile extraction
-        if (message.object === 'user.transcription' && context.publisher === '8888') {
-            // Check if this is a meaningful user response (not just "ok", "yes", etc.)
-            const meaningfulResponse = message.text && message.text.trim().length > 2 && 
-                !['ok', 'yes', 'no', 'yeah', 'yep', 'nope'].includes(message.text.toLowerCase().trim());
-            
-            if (!meaningfulResponse) {
-                console.log('🔄 Skipping non-meaningful user response:', message.text);
-                return;
-            }
-            
-                    // Check if we already have this exact message to prevent duplicates
-        // Include isFinal status in the key to allow both live and final versions
-        const isFinal = message.final || message.is_final || false;
-        const messageKey = `${message.text}-${message.turn_id}-${isFinal}`;
-        if (this.processedUserMessages.has(messageKey)) {
-            console.log('🔄 Skipping duplicate user message:', message.text, 'isFinal:', isFinal);
-            return;
-        }
-        
-        // Mark this message as processed
-        this.processedUserMessages.add(messageKey);
-            console.log('✅ Allowing meaningful user response for profile extraction:', message.text);
-        }
-        
         if (message.type === EMessageType.AGENT_TRANSCRIPTION || 
             message.customType === 'assistant.transcription' ||
-            message.object === 'assistant.transcription' ||
-            message.object === 'assistant.transcript') {
+            message.object === 'assistant.transcription') {
             // Use the expected agent ID from UI if available, otherwise use context.publisher
             const displayAgentId = this.expectedAgentId || context.publisher;
             speaker = `Assistant (${displayAgentId})`;
@@ -281,12 +328,7 @@ class CovSubRenderController extends EventHelper {
             // 1. They explicitly have final=true, OR
             // 2. turn_status === 1, OR  
             // 3. They have end punctuation and turn_status === 0 (in progress)
-            // 4. They contain field markers (these are always final)
-            const hasFieldMarkers = message.text && (
-                message.text.includes('[[field:') || 
-                message.text.includes('[[') && message.text.includes(']]')
-            );
-            isFinal = message.is_final === true || message.final === true || message.turn_status === 1 || hasFieldMarkers;
+            isFinal = message.is_final === true || message.final === true || message.turn_status === 1;
         }
 
         // Safely format timestamp to avoid "Invalid Date"
@@ -311,41 +353,85 @@ class CovSubRenderController extends EventHelper {
                 isFinal: isFinal,
                 timestamp: formattedTimestamp,
                 turnId: message.turn_id || null,
-                user_id: message.user_id || null,
-                messageId: messageId // Add messageId for better tracking
+                user_id: message.user_id || null
             }
         };
 
-        // Always update chat history for both final and non-final transcriptions
-        // This ensures we see live updates as the agent speaks
-        const currentChatHistory = [...this.chatHistory];
-        
+        // Add to chat history if it's a final transcription
         if (transcriptionData.transcription.isFinal) {
-            // For final transcriptions, check if we already have this exact message
-            const existingMessage = currentChatHistory.find(item => 
+            // Check if this message exactly matches the greeting message
+            const greetingMessage = this.getGreetingMessage();
+            const isExactGreetingMatch = isAssistantMessage && greetingMessage && transcriptionData.transcription.text.trim() === greetingMessage;
+            
+            // For greeting messages, check if a final version already exists (by exact text match, not turnId)
+            // We only want one greeting message that goes final, and don't display duplicates within 1-2 seconds
+            if (isExactGreetingMatch) {
+                // Check if there's already a final greeting with this exact text (regardless of turnId)
+                const existingFinalGreeting = this.chatHistory.find(item => 
+                    item.data && 
+                    item.data.text === transcriptionData.transcription.text &&
+                    item.data.speaker && item.data.speaker.includes('Assistant') &&
+                    !item.id.toString().startsWith('temp-')
+                );
+                
+                if (existingFinalGreeting) {
+                    // There's already a final greeting message in chat history
+                    // We only want one greeting message that goes final, so skip duplicates
+                    const now = Date.now();
+                    if (this.lastGreetingMessageTime && (now - this.lastGreetingMessageTime) < 2000) {
+                        // Final greeting was added within last 2 seconds, skip it to prevent duplicates
+                        console.log('Skipping duplicate greeting message in chat history (final version added recently):', transcriptionData.transcription.text.substring(0, 50) + '...');
+                        return;
+                    } else {
+                        // Final greeting exists - skip it to prevent duplicates in the same conversation
+                        // We only want one greeting message that goes final
+                        console.log('Skipping duplicate greeting message in chat history (final version already exists):', transcriptionData.transcription.text.substring(0, 50) + '...');
+                        return;
+                    }
+                } else {
+                    // No existing final greeting, always allow it (first time)
+                }
+            }
+            
+            // Check if we already have this exact message in chat history to prevent duplicates (for non-greeting messages)
+            const existingMessage = this.chatHistory.find(item => 
                 item.data && 
                 item.data.text === transcriptionData.transcription.text &&
                 item.data.speaker === transcriptionData.transcription.speaker &&
+                item.data.turnId === transcriptionData.transcription.turnId &&
                 !item.id.toString().startsWith('temp-')
             );
             
-            if (!existingMessage) {
-                currentChatHistory.push({
-                    id: Date.now() + Math.random(),
-                    timestamp: transcriptionData.transcription.timestamp,
-                    agentUserId: transcriptionData.agentUserId,
-                    data: transcriptionData.transcription
-                });
-            } else {
+            if (existingMessage && !isExactGreetingMatch) {
+                // Not a greeting message and it already exists, skip it
                 console.log('Skipping duplicate final message in chat history:', transcriptionData.transcription.text.substring(0, 50) + '...');
+                return;
             }
-        } else {
-            // For non-final transcriptions, update or add temporary item
+            
+            // Add to chat history
+            this.chatHistory.push({
+                id: Date.now() + Math.random(),
+                timestamp: transcriptionData.transcription.timestamp,
+                agentUserId: transcriptionData.agentUserId,
+                data: transcriptionData.transcription
+            });
+            
+            // Track when we add a greeting message to chat history (update time when actually added)
+            // This prevents duplicate additions within the time window
+            if (isExactGreetingMatch) {
+                this.lastGreetingMessageTime = Date.now();
+            }
+        }
+
+        // Always notify about transcription update (both final and non-final)
+        // Create a temporary array with the current item for live updates
+        const currentChatHistory = [...this.chatHistory];
+        
+        if (!transcriptionData.transcription.isFinal) {
+            // For non-final transcriptions, check if we have a previous non-final from same speaker
             const tempId = `temp-${transcriptionData.agentUserId}`;
             const existingTempIndex = currentChatHistory.findIndex(item => 
-                item.id === tempId || 
-                (item.id && item.id.toString().startsWith('temp-') && 
-                 item.agentUserId === transcriptionData.agentUserId)
+                item.id === tempId || (item.id && item.id.toString().startsWith('temp-') && item.agentUserId === transcriptionData.agentUserId)
             );
             
             const tempItem = {
@@ -364,22 +450,21 @@ class CovSubRenderController extends EventHelper {
             }
         }
 
-        // Update chat history and notify listeners
-        this.chatHistory = currentChatHistory;
-        console.log('Chat history updated:', this.chatHistory);
-        
-        // Notify listeners about the transcription update
-        if (this.onTranscriptionUpdate) {
-            this.onTranscriptionUpdate(transcriptionData);
+        if (this.onChatHistoryUpdated) {
+            this.onChatHistoryUpdated(currentChatHistory);
         }
-        
-        // Emit the transcription-updated event for proper event handling
-        this.emit(EConversationalAIAPIEvents.TRANSCRIPTION_UPDATED, this.chatHistory);
+
+        // Periodically remove duplicates to prevent memory bloat
+        if (this.chatHistory.length > 20) {
+            this.removeDuplicateMessages();
+        }
+
+        console.log('Transcription update:', transcriptionData, 'Final:', transcriptionData.transcription.isFinal);
     }
 
     // Helper method to remove duplicate messages from chat history
     removeDuplicateMessages() {
-        // Remove duplicates based on content + turn_id + speaker + message_id
+        // Remove duplicates based on content + turn_id + speaker
         const seen = new Set();
         const uniqueMessages = [];
         
@@ -389,8 +474,7 @@ class CovSubRenderController extends EventHelper {
             const text = message.data.text || '';
             const turnId = message.data.turn_id || message.data.turnId || '';
             const speaker = message.data.speaker || '';
-            const messageId = message.data.message_id || message.data.messageId || '';
-            const key = `${text.trim()}:${turnId}:${speaker}:${messageId}`;
+            const key = `${text.trim()}:${turnId}:${speaker}`;
             
             if (!seen.has(key)) {
                 seen.add(key);
@@ -457,23 +541,15 @@ class CovSubRenderController extends EventHelper {
         const pending = this.pendingAssistantTranscriptions.get(agentUserId);
         if (!pending) return;
 
-        // Check if we already have this message in chat history to prevent duplicates
         const text = pending.message.text || pending.message.content || '';
-        const messageId = pending.message.message_id || pending.message.messageId || '';
-        const turnId = pending.message.turn_id || pending.message.turnId || '';
         
-        // Create a unique key using messageId (most reliable) or turnId + text
-        const uniqueKey = messageId || `${turnId}:${text.trim()}`;
-        
-        // Check if we've already processed this exact message
-        if (this.processedKeys && this.processedKeys.has(uniqueKey)) {
-            console.log('🔄 Skipping duplicate finalization (exact match):', uniqueKey);
-            // Clear the pending transcription without adding to chat history
-            this.pendingAssistantTranscriptions.delete(agentUserId);
-            return;
-        }
-        
-        // Also check for content-based duplicates
+        // Check if this message exactly matches the greeting message
+        const greetingMessage = this.getGreetingMessage();
+        const isExactGreetingMatch = greetingMessage && text.trim() === greetingMessage;
+
+        // Check if we already have this message in chat history to prevent duplicates
+        // But allow greeting messages if they exactly match the configured greeting message (and enough time has passed)
+        // Check both final and temp messages
         const existingMessage = this.chatHistory.find(item => 
             item.data && 
             item.data.text === text &&
@@ -481,16 +557,62 @@ class CovSubRenderController extends EventHelper {
             !item.id.toString().startsWith('temp-')
         );
         
-        if (existingMessage) {
+        // Also check for temp messages that match (these should be finalized)
+        const existingTempMessage = this.chatHistory.find(item => 
+            item.data && 
+            item.data.text === text &&
+            item.data.speaker && item.data.speaker.includes('Assistant') &&
+            item.id.toString().startsWith('temp-')
+        );
+        
+        // For greeting messages, check if a final version was already added recently (within 2 seconds)
+        // This prevents duplicate greeting messages from being finalized within the time window
+        // But we should always finalize if there's only a temp message or no message at all
+        let shouldSkipFinalization = false;
+        const now = Date.now();
+        
+        if (isExactGreetingMatch) {
+            // We only want one greeting message that goes final
+            // If a final version already exists, only allow it if enough time has passed (more than 2 seconds)
+            if (existingMessage) {
+                // There's already a final greeting message in chat history
+                if (this.lastGreetingMessageTime && (now - this.lastGreetingMessageTime) < 2000) {
+                    // Final greeting was added within last 2 seconds, skip it to prevent duplicates
+                    console.log('Skipping duplicate greeting message finalization (final version added recently):', text.substring(0, 50) + '...');
+                    shouldSkipFinalization = true;
+                } else {
+                    // Final greeting exists but enough time has passed, allow it (agent restarted)
+                    console.log('Allowing duplicate greeting message finalization (enough time passed) - will add as final');
+                    // We'll update the time when we actually add it to chat history
+                }
+            } else if (existingTempMessage) {
+                // Greeting exists as temp message - remove it and we'll add it as final
+                // This is the normal case for first-time greeting finalization
+                const tempIndex = this.chatHistory.findIndex(item => 
+                    item.data && 
+                    item.data.text === text &&
+                    item.data.speaker && item.data.speaker.includes('Assistant') &&
+                    item.id.toString().startsWith('temp-')
+                );
+                if (tempIndex >= 0) {
+                    this.chatHistory.splice(tempIndex, 1);
+                    console.log('Removing temp greeting message to finalize it');
+                }
+                // We'll update the time when we actually add it to chat history
+            } else {
+                // First time seeing this greeting - always allow finalization
+                console.log('Finalizing first-time greeting message');
+                // We'll update the time when we actually add it to chat history
+            }
+        } else if (existingMessage && !isExactGreetingMatch) {
+            // Not a greeting message and it already exists, skip it
             console.log('Skipping duplicate finalization - message already exists:', text.substring(0, 50) + '...');
-            // Clear the pending transcription without adding to chat history
-            this.pendingAssistantTranscriptions.delete(agentUserId);
-            return;
+            shouldSkipFinalization = true;
         }
         
-        // Mark this message as processed to prevent future duplicates
-        if (this.processedKeys) {
-            this.processedKeys.set(uniqueKey, Date.now());
+        if (shouldSkipFinalization) {
+            this.pendingAssistantTranscriptions.delete(agentUserId);
+            return;
         }
 
         // Safely format timestamp for final transcription
@@ -526,6 +648,12 @@ class CovSubRenderController extends EventHelper {
             agentUserId: finalTranscription.agentUserId,
             data: finalTranscription.transcription
         });
+
+        // Track when we finalize a greeting message (update time when actually added to chat history)
+        // This prevents duplicate finalizations within the time window
+        if (isExactGreetingMatch) {
+            this.lastGreetingMessageTime = Date.now();
+        }
 
         // Clear the pending transcription
         this.pendingAssistantTranscriptions.delete(agentUserId);
@@ -601,7 +729,6 @@ class ConversationalAIAPI extends EventHelper {
         this.enableLog = false;
         this.covSubRenderController = null;
         this.isInitialized = false;
-        this.processedUserMessages = new Set(); // Track processed user messages to prevent duplicates
 
         this.setupController();
     }
@@ -736,13 +863,13 @@ class ConversationalAIAPI extends EventHelper {
         });
 
         try {
-            // Use correct RTM format: publish to agent rtc uid (8888) with correct options
+            // Use correct RTM format: publish to agent rtc uid with correct options
             const publishOptions = {
                 channelType: "USER",
                 customType: "user.transcription"
             };
-            const result = await rtmEngine.publish("8888", messageStr, publishOptions);
-            console.log('Successfully sent interrupt message to agent RTC UID 8888');
+            const result = await rtmEngine.publish(agentUserId.toString(), messageStr, publishOptions);
+            console.log('Successfully sent interrupt message to agent RTC UID', agentUserId);
             return result;
         } catch (error) {
             console.error('Failed to send interrupt message:', error);
@@ -799,34 +926,8 @@ class ConversationalAIAPI extends EventHelper {
     }
 
     handleRtmMessage(eventArgs) {
-        console.log('TRANSCRIPTION DEBUG - RTM message received:', eventArgs);
-        
-        // Log all RTM messages for debugging
-        if (eventArgs.message) {
-            try {
-                const parsed = JSON.parse(eventArgs.message);
-                console.log('🔍 RTM MESSAGE DEBUG:', {
-                    object: parsed.object,
-                    text: parsed.text,
-                    content: parsed.content,
-                    type: parsed.type,
-                    customType: parsed.customType,
-                    publisher: eventArgs.publisher,
-                    fullMessage: parsed
-                });
-            } catch (e) {
-                console.log('🔍 RTM MESSAGE DEBUG (non-JSON):', eventArgs.message);
-            }
-        }
-        
-        // Log ALL RTM messages regardless of type
-        console.log('🔍 ALL RTM MESSAGE RECEIVED:', {
-            channelName: eventArgs.channelName,
-            publisher: eventArgs.publisher,
-            message: eventArgs.message,
-            topicName: eventArgs.topicName,
-            channelType: eventArgs.channelType
-        });
+        // Verbose logging removed - uncomment for debugging if needed
+        // console.log('TRANSCRIPTION DEBUG - RTM message received:', eventArgs);
 
         try {
             // RTM v2.x event structure is different
@@ -857,13 +958,13 @@ class ConversationalAIAPI extends EventHelper {
             } else if (messageData instanceof Uint8Array) {
                 const decoder = new TextDecoder('utf-8');
                 const messageString = decoder.decode(messageData);
-                // console.log('🎤 TRANSCRIPTION DECODED MESSAGE:', messageString);
-                console.log('TRANSCRIPTION DEBUG - Decoded binary message:', messageString);
+                // Verbose logging removed - uncomment for debugging if needed
+                // console.log('TRANSCRIPTION DEBUG - Decoded binary message:', messageString);
                 try {
                     parsedMessage = JSON.parse(messageString);
-                    console.log('TRANSCRIPTION DEBUG - Parsed binary message:', parsedMessage);
+                    // console.log('TRANSCRIPTION DEBUG - Parsed binary message:', parsedMessage);
                 } catch (parseError) {
-                    console.log('TRANSCRIPTION DEBUG - Plain text from binary:', messageString);
+                    // console.log('TRANSCRIPTION DEBUG - Plain text from binary:', messageString);
                     parsedMessage = {
                         type: 'transcription',
                         text: messageString,
@@ -873,11 +974,11 @@ class ConversationalAIAPI extends EventHelper {
                     };
                 }
             } else {
-                console.warn('TRANSCRIPTION DEBUG - Unsupported message type received:', typeof messageData, messageData);
+                // console.warn('TRANSCRIPTION DEBUG - Unsupported message type received:', typeof messageData);
                 return;
             }
 
-            console.log('TRANSCRIPTION DEBUG - Sending to controller:', parsedMessage);
+            // console.log('TRANSCRIPTION DEBUG - Sending to controller:', parsedMessage);
             this.covSubRenderController.handleMessage(parsedMessage, {
                 publisher: publisher
             });
@@ -905,11 +1006,9 @@ class ConversationalAIAPI extends EventHelper {
 
     // Event callback methods
     onChatHistoryUpdated(chatHistory) {
-        console.log('📡 onChatHistoryUpdated called with', chatHistory?.length || 0, 'messages');
         if (this.enableLog) {
             console.log('Chat history updated:', chatHistory);
         }
-        console.log('📡 Emitting TRANSCRIPTION_UPDATED event with', chatHistory.length, 'messages');
         this.emit(EConversationalAIAPIEvents.TRANSCRIPTION_UPDATED, chatHistory);
     }
 
@@ -976,10 +1075,7 @@ class ConversationalAIAPI extends EventHelper {
         
         // Validate message based on type
         if (message.messageType === 'TEXT') {
-            if (!message.text || message.text.trim() === '') {
-                console.error('TEXT message validation failed: text is empty');
-                throw new Error('Text message cannot be empty');
-            }
+            // Allow empty text messages
         } else if (message.messageType === 'IMAGE') {
             // Check for either url or base64
             if ((!message.url || message.url.trim() === '') && 
@@ -1021,19 +1117,19 @@ class ConversationalAIAPI extends EventHelper {
         console.log('📤 Preparing to send message:', {
             type: message.messageType,
             data: messageData,
-            agentRtcUid: '8888'
+            agentRtcUid: agentUserId
         });
 
         const messageStr = JSON.stringify(messageData);
 
         try {
-            // Use correct RTM format: publish to agent rtc uid (8888) with correct options
+            // Use correct RTM format: publish to agent rtc uid with correct options
             const publishOptions = {
                 channelType: "USER",
                 customType: message.messageType === "TEXT" ? "user.transcription" : "image.upload"
             };
-            const result = await rtmEngine.publish("8888", messageStr, publishOptions);
-            console.log('✅ Successfully sent', message.messageType, 'message to agent RTC UID 8888:', messageData);
+            const result = await rtmEngine.publish(agentUserId.toString(), messageStr, publishOptions);
+            console.log('✅ Successfully sent', message.messageType, 'message to agent RTC UID', agentUserId, ':', messageData);
             return result;
         } catch (error) {
             console.error('❌ Failed to send message:', error);
@@ -1059,5 +1155,4 @@ if (typeof module !== 'undefined' && module.exports) {
         EMessageType
     };
 }
-
 export default ConversationalAIAPI;

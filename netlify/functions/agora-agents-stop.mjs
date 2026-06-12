@@ -86,14 +86,23 @@ const handler = async (req, ctx) => {
       },
     });
   } catch (err) {
+    // Treat 404 / "agent not found" as success — disconnect path sometimes calls /leave twice
+    const msg = (err && err.message) ? err.message : String(err);
+    const status = err?.response?.status;
+    if (status === 404 || /not\s+found|does\s+not\s+exist|unknown\s+agent/i.test(msg)) {
+      return new Response(JSON.stringify({ success: true, data: { alreadyStopped: true } }), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "Content-Type" },
+      });
+    }
     console.error("❌ agora-agents-stop error:", err);
-    return new Response(JSON.stringify({ 
+    return new Response(JSON.stringify({
       success: false,
-      error: "Internal Error", 
-      details: String(err) 
+      error: "Internal Error",
+      details: msg
     }), {
       status: 500,
-      headers: { 
+      headers: {
         "Content-Type": "application/json",
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Headers": "Content-Type"
