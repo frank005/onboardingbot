@@ -3,6 +3,7 @@
  * Ported from agora-sso-starter (Next.js) — no database required.
  */
 
+import { randomUUID } from "node:crypto";
 import { SignJWT, jwtVerify } from "jose";
 
 export const SESSION_COOKIE = "agora_session";
@@ -116,7 +117,7 @@ export function clearSessionCookieHeader(req) {
 }
 
 export function issueOAuthStateCookie(req) {
-  const state = crypto.randomUUID();
+  const state = randomUUID();
   const header = buildSetCookie(OAUTH_STATE_COOKIE, state, {
     httpOnly: true,
     sameSite: "Lax",
