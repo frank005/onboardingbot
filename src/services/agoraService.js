@@ -171,6 +171,7 @@ class AgoraService {
       const resp = await fetch('/api/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ channelName, uid: uid.toString() })
       });
       if (!resp.ok) return null;
@@ -750,7 +751,7 @@ class AgoraService {
     }
 
     try {
-      const response = await fetch(`/.netlify/functions/agora-agents-stop`, {
+      const response = await fetch('/api/agora/agents/stop', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

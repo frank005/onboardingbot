@@ -9,6 +9,7 @@ globalThis.pako = pakoModule.default || pakoModule;
 
 // Static import lets esbuild bundle the CJS utils into the function.
 import rtcTokenBuilderModule from './utils/RtcTokenBuilder2.js';
+import { requireSessionUser } from './utils/auth.mjs';
 const { RtcTokenBuilder, RtcRole } = rtcTokenBuilderModule;
 
 const handler = async (req, ctx) => {
@@ -28,6 +29,9 @@ const handler = async (req, ctx) => {
         },
       });
     }
+
+    const { response: authResponse } = await requireSessionUser(req);
+    if (authResponse) return authResponse;
 
     console.log('🔍 Agora agents function called - creating agent');
 

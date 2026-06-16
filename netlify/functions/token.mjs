@@ -10,6 +10,7 @@ globalThis.pako = pakoModule.default || pakoModule;
 // Static import lets esbuild bundle the CJS utils into the function.
 // RtcTokenBuilder2.js internally requires AccessToken2.js, so esbuild follows the chain.
 import rtcTokenBuilderModule from './utils/RtcTokenBuilder2.js';
+import { requireSessionUser } from './utils/auth.mjs';
 const { RtcTokenBuilder, RtcRole } = rtcTokenBuilderModule;
 
 const corsHeaders = {
@@ -29,6 +30,9 @@ const handler = async (req) => {
       headers: corsHeaders
     });
   }
+
+  const { response: authResponse } = await requireSessionUser(req);
+  if (authResponse) return authResponse;
 
   const appId = process.env.AGORA_APP_ID;
   const appCertificate = process.env.AGORA_APP_CERTIFICATE;

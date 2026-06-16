@@ -2,6 +2,7 @@
 // Sends chat message to Agora agent
 
 import axios from 'axios';
+import { requireSessionUser } from './utils/auth.mjs';
 
 export default async (req, ctx) => {
   try {
@@ -20,6 +21,9 @@ export default async (req, ctx) => {
         },
       });
     }
+
+    const { response: authResponse } = await requireSessionUser(req);
+    if (authResponse) return authResponse;
 
     console.log('🔍 Agora agents chat function called');
 

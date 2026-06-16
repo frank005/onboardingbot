@@ -26,17 +26,22 @@ Added support for App-Certificate-based RTC tokens:
 - Agent token is generated server-side in `agora-agents.mjs`
 - If `AGORA_APP_CERTIFICATE` is not set, falls back to tokenless mode (App ID only)
 
-### Login System Removed
-The previous Netlify Blobs auth/login system has been removed entirely:
-- Deleted `login.mjs`, `auth-admin.mjs`, `refresh-session.mjs` Netlify functions
-- Deleted `gate.js` edge function and `public/login.html`
-- Removed `[[edge_functions]]` and `[[blobs]]` blocks from `netlify.toml`
-- Removed auth-bypass logic and `<SessionWarning />` from `App.js`
-- `useSessionTimer` hook is now a no-op (kept for compatibility with `ConversationInterface` and `Navigation`)
+### Agora SSO + daily demo quota
+Ported from [agora-sso-starter](https://github.com/) (Jay's recipe) — **no database**:
 
-Auth-related env vars no longer needed: `SESSION_SECRET`, `MASTER_EMAIL`, `MASTER_PASSWORD`, `ALLOWED_USERS`, `NETLIFY_SITE_ID`, `NETLIFY_BLOBS_TOKEN`, `BYPASS_AUTH`.
+- **SSO login** via Netlify Functions (`/api/auth/agora/*`, `/api/auth/me`) with HttpOnly session JWT (`SESSION_JWT_SECRET`)
+- **Local dev:** set `AUTH_MODE=bypass` for a synthetic demo user (no SSO credentials needed)
+- **Production:** set `AUTH_MODE=sso` and configure `AGORA_SSO_*` vars (see `env.example`)
+- **15 min/day limit:** client-side only via `REACT_APP_DEMO_QUOTA_SECONDS=900` and `localStorage` (not Redis — soft enforcement). **Unlimited** for `@agora.io` / `*.agora.io` email addresses.
+- **SSO callback URL (production):** `https://onboardingbot.netlify.app/console-callback` — set `AGORA_SSO_REDIRECT_URI` to match and whitelist with Agora SSO admin.
+- Sensitive APIs (`/api/token`, `/api/agora/agents*`) require a valid session cookie
 
-A different OAuth provider will be wired in later.
+See `env.example` for all auth-related variables.
+
+### Login system (legacy removed)
+The previous Netlify Blobs auth/login system has been removed. It is replaced by Agora SSO above.
+
+Auth-related env vars no longer used: `SESSION_SECRET`, `MASTER_EMAIL`, `MASTER_PASSWORD`, `ALLOWED_USERS`, `NETLIFY_SITE_ID`, `NETLIFY_BLOBS_TOKEN`, `BYPASS_AUTH`.
 
 ---
 

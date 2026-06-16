@@ -40,6 +40,31 @@
   to   = "/.netlify/functions/agora-agents-stop"
   status = 200
 
+[[redirects]]
+  from = "/api/auth/agora/start"
+  to   = "/.netlify/functions/auth-agora-start"
+  status = 200
+
+[[redirects]]
+  from = "/console-callback"
+  to   = "/.netlify/functions/auth-agora-callback"
+  status = 200
+
+[[redirects]]
+  from = "/api/auth/agora/callback"
+  to   = "/.netlify/functions/auth-agora-callback"
+  status = 200
+
+[[redirects]]
+  from = "/api/auth/agora/logout"
+  to   = "/.netlify/functions/auth-agora-logout"
+  status = 200
+
+[[redirects]]
+  from = "/api/auth/me"
+  to   = "/.netlify/functions/auth-me"
+  status = 200
+
 # --- SPA catch-all LAST ---
 [[redirects]]
   from = "/*"
@@ -48,7 +73,7 @@
 
 [functions]
   node_bundler = "esbuild"
-  external_node_modules = []
+  external_node_modules = ["jose"]
   included_files = ["netlify/functions/utils/**"]
 
 [[headers]]

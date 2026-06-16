@@ -1,12 +1,13 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { MessageCircle, User, BarChart3, Settings, Bot, Clock } from 'lucide-react';
-import { useSessionTimer } from '../hooks/useSessionTimer';
+import { MessageCircle, User, BarChart3, Settings, Bot, Clock, LogOut } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 const Navigation = ({ user }) => {
   const location = useLocation();
-  const { timeRemaining, showWarning, formatTimeRemaining } = useSessionTimer();
+  const { authUser, sessionTimer, signOutUrl } = useAuth();
+  const { timeRemaining, showWarning, formatTimeRemaining } = sessionTimer;
 
   const navItems = [
     { path: '/', label: 'Conversation', icon: MessageCircle },
@@ -16,6 +17,8 @@ const Navigation = ({ user }) => {
   ];
 
   const isActive = (path) => location.pathname === path;
+  const displayName =
+    authUser?.name || authUser?.email || user?.profile?.name || 'Guest User';
 
   return (
     <nav className="bg-white shadow-sm border-b">
@@ -68,22 +71,32 @@ const Navigation = ({ user }) => {
 
           {/* User Info */}
           <div className="flex items-center space-x-3">
-            {/* Session Timer */}
-            {timeRemaining !== null && (
+            {timeRemaining !== null && timeRemaining !== Infinity && (
               <div className={`flex items-center space-x-1 px-2 py-1 rounded text-xs ${
                 showWarning 
                   ? 'bg-yellow-100 text-yellow-800' 
                   : 'bg-gray-100 text-gray-600'
               }`}>
                 <Clock className="w-3 h-3" />
-                <span>{formatTimeRemaining(timeRemaining)}</span>
+                <span title="Daily demo time remaining (UTC day)">
+                  {formatTimeRemaining(timeRemaining)}
+                </span>
               </div>
             )}
+
+            {authUser ? (
+              <a
+                href={signOutUrl}
+                className="flex items-center space-x-1 text-xs text-gray-500 hover:text-gray-700"
+                title="Sign out"
+              >
+                <LogOut className="w-3 h-3" />
+                <span>Sign out</span>
+              </a>
+            ) : null}
             
             <div className="text-right">
-              <p className="text-sm font-medium text-gray-900">
-                {user?.profile?.name || 'Guest User'}
-              </p>
+              <p className="text-sm font-medium text-gray-900">{displayName}</p>
               <p className="text-xs text-gray-500">
                 {user?.onboardingCompleted ? 'Onboarding Complete' : 'Onboarding Pending'}
               </p>
@@ -99,4 +112,4 @@ const Navigation = ({ user }) => {
   );
 };
 
-export default Navigation; 
+export default Navigation;

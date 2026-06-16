@@ -2,6 +2,7 @@
 // Stops Agora agent
 
 import axios from 'axios';
+import { requireSessionUser } from './utils/auth.mjs';
 
 const handler = async (req, ctx) => {
   try {
@@ -21,7 +22,8 @@ const handler = async (req, ctx) => {
       });
     }
 
-    // console.log('🔍 Agora agents stop function called');
+    const { response: authResponse } = await requireSessionUser(req);
+    if (authResponse) return authResponse;
 
     // Parse request body
     const body = await req.json();

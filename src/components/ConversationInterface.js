@@ -15,7 +15,8 @@ import {
   wireConvoToProfile
 } from '../utils/profile-sync';
 import { normalizeAssistant } from '../utils/normalizeAssistant';
-import { useSessionTimer } from '../hooks/useSessionTimer';
+import { useAuth } from '../context/AuthContext';
+import SessionWarning from './SessionWarning';
 
 const ConversationInterface = ({ 
   config, 
@@ -48,8 +49,13 @@ const ConversationInterface = ({
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
-  // Session timer hook
-  const { isExpired } = useSessionTimer();
+  const { sessionTimer } = useAuth();
+  const {
+    isExpired,
+    startTracking,
+    stopTracking,
+    quotaExhausted,
+  } = sessionTimer;
 
 
   const processedMessages = useRef(new Set()); // Track processed messages to prevent duplicates
@@ -66,6 +72,20 @@ const ConversationInterface = ({
   useEffect(() => {
     scrollToBottom();
   }, [conversation?.messages]);
+
+  useEffect(() => {
+    if (agoraConnected) {
+      const started = startTracking();
+      if (!started) {
+        agoraService.disconnect().catch(console.error);
+        setAgoraConnected(false);
+        setAgoraAgentId(null);
+        toast.error('Daily demo time used up for today.');
+      }
+    } else {
+      stopTracking();
+    }
+  }, [agoraConnected, startTracking, stopTracking]);
 
   // Handle Agora errors
   useEffect(() => {
@@ -98,7 +118,7 @@ const ConversationInterface = ({
       }));
       
       // Show session expired message
-      toast.error('Your session has expired. Please log in again.');
+      toast.error('Daily demo time used up. Quota resets at midnight UTC.');
     }
   }, [isExpired, agoraConnected, setConversation]);
 
@@ -252,8 +272,8 @@ const ConversationInterface = ({
   const handleStartConversation = async () => {
     try {
       // Check if session is expired
-      if (isExpired) {
-        toast.error('Your session has expired. Please log in again.');
+      if (isExpired || quotaExhausted) {
+        toast.error('Daily demo time used up for today.');
         return;
       }
       
@@ -690,7 +710,7 @@ const ConversationInterface = ({
 
     // Check if session is expired
     if (isExpired) {
-      toast.error('Your session has expired. Please log in again.');
+      toast.error('Daily demo time used up for today.');
       return;
     }
 
@@ -781,6 +801,7 @@ const ConversationInterface = ({
 
   return (
     <div className="max-w-4xl mx-auto">
+      <SessionWarning />
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -992,7 +1013,7 @@ const ConversationInterface = ({
                   {isExpired ? "Session Expired" : "Welcome to the Platform!"}
                 </h2>
                 <p className="text-gray-600 mb-6 max-w-md mx-auto">
-                  {isExpired ? "Your session has expired. Please log in again to continue." : "I'm here to help you get started. Let's begin your onboarding journey together."}
+                  {isExpired ? "Daily demo time used up. Quota resets at midnight UTC." : "I'm here to help you get started. Let's begin your onboarding journey together."}
                 </p>
                 <button
                   onClick={handleStartConversation}
@@ -1035,7 +1056,7 @@ const ConversationInterface = ({
                 type="text"
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
-                placeholder={isExpired ? "Session expired - please log in again" : "Type your message..."}
+                placeholder={isExpired ? "Daily demo time used up" : "Type your message..."}
                 className="input-field pr-20 min-h-[44px]"
                 disabled={!isConversationStarted || isExpired}
               />

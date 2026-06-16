@@ -8,6 +8,7 @@
     "autoprefixer": "^10.4.16",
     "axios": "^1.11.0",
     "framer-motion": "^10.16.5",
+    "jose": "^6.2.3",
     "lucide-react": "^0.294.0",
     "pako": "^2.1.0",
     "postcss": "^8.4.32",

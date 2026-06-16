@@ -1,31 +1,13 @@
 import React from 'react';
-import { useSessionTimer } from '../hooks/useSessionTimer';
+import { useAuth } from '../context/AuthContext';
 
 const SessionWarning = () => {
-  const { timeRemaining, showWarning, formatTimeRemaining, refreshSession } = useSessionTimer();
+  const { sessionTimer } = useAuth();
+  const { timeRemaining, showWarning, formatTimeRemaining } = sessionTimer;
 
   if (!showWarning || timeRemaining === null) {
     return null;
   }
-
-  const handleRefresh = async () => {
-    try {
-      await refreshSession();
-      // Show success message (you could use a toast library here)
-      // console.log('Session refreshed successfully');
-    } catch (error) {
-      console.error('Failed to refresh session:', error);
-      // If refresh fails, redirect to login
-      alert('Failed to refresh session. Please log in again.');
-      window.location.href = '/login';
-    }
-  };
-
-  const handleLogout = () => {
-    // Clear session and redirect to login
-    document.cookie = 'session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
-    window.location.href = '/login';
-  };
 
   return (
     <div className="fixed top-4 right-4 z-50 bg-yellow-100 border-l-4 border-yellow-500 p-4 rounded-lg shadow-lg max-w-sm">
@@ -37,40 +19,14 @@ const SessionWarning = () => {
         </div>
         <div className="ml-3 flex-1">
           <h3 className="text-sm font-medium text-yellow-800">
-            Session Expiring Soon
+            Daily demo time running low
           </h3>
           <div className="mt-2 text-sm text-yellow-700">
             <p>
-              Your session will expire in <strong>{formatTimeRemaining(timeRemaining)}</strong>
-            </p>
-            <p className="mt-1">
-              Please save your work and log in again to continue.
+              About <strong>{formatTimeRemaining(timeRemaining)}</strong> left in
+              today&apos;s demo budget. Quota resets at midnight UTC.
             </p>
           </div>
-          <div className="mt-3 flex space-x-2">
-            <button
-              onClick={handleRefresh}
-              className="bg-yellow-600 hover:bg-yellow-700 text-white text-xs px-3 py-1 rounded transition-colors"
-            >
-              Refresh Session
-            </button>
-            <button
-              onClick={handleLogout}
-              className="bg-gray-600 hover:bg-gray-700 text-white text-xs px-3 py-1 rounded transition-colors"
-            >
-              Logout Now
-            </button>
-          </div>
-        </div>
-        <div className="ml-4 flex-shrink-0">
-          <button
-            onClick={() => window.location.reload()}
-            className="text-yellow-400 hover:text-yellow-600"
-          >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
         </div>
       </div>
     </div>
