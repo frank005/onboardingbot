@@ -3,6 +3,7 @@
  * Ported from agora-sso-starter (Next.js) — no database required.
  */
 
+import "./crypto-polyfill.mjs";
 import { randomUUID } from "node:crypto";
 import { SignJWT, jwtVerify } from "jose";
 
