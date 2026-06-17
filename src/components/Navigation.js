@@ -8,6 +8,8 @@ const Navigation = ({ user }) => {
   const location = useLocation();
   const { authUser, sessionTimer, signOutUrl } = useAuth();
   const { timeRemaining, showWarning, formatTimeRemaining } = sessionTimer;
+  const showQuotaBadge = timeRemaining !== null;
+  const quotaUnlimited = timeRemaining === Infinity;
 
   const navItems = [
     { path: '/', label: 'Conversation', icon: MessageCircle },
@@ -71,15 +73,23 @@ const Navigation = ({ user }) => {
 
           {/* User Info */}
           <div className="flex items-center space-x-3">
-            {timeRemaining !== null && timeRemaining !== Infinity && (
+            {showQuotaBadge && (
               <div className={`flex items-center space-x-1 px-2 py-1 rounded text-xs ${
-                showWarning 
-                  ? 'bg-yellow-100 text-yellow-800' 
-                  : 'bg-gray-100 text-gray-600'
+                quotaUnlimited
+                  ? 'bg-emerald-50 text-emerald-700'
+                  : showWarning
+                    ? 'bg-yellow-100 text-yellow-800'
+                    : 'bg-gray-100 text-gray-600'
               }`}>
                 <Clock className="w-3 h-3" />
-                <span title="Daily demo time remaining (UTC day)">
-                  {formatTimeRemaining(timeRemaining)}
+                <span
+                  title={
+                    quotaUnlimited
+                      ? 'Unlimited demo time for Agora accounts'
+                      : 'Daily demo time remaining (UTC day)'
+                  }
+                >
+                  {quotaUnlimited ? 'Unlimited' : formatTimeRemaining(timeRemaining)}
                 </span>
               </div>
             )}
