@@ -64,13 +64,14 @@ const handler = async (req) => {
 
     let sessionJwt;
     try {
-      sessionJwt = await signSession({
-        id: customer.id,
-        email: customer.email,
-        name: customer.name,
-      });
+      sessionJwt = await signSession(customer);
     } catch (err) {
       authError = "session_failed";
+      console.error("[auth] session_failed diagnostics:", {
+        secretLen: process.env.SESSION_JWT_SECRET?.trim()?.length ?? 0,
+        customerIdLen: String(customer?.id ?? "").length,
+        err: err instanceof Error ? err.message : String(err),
+      });
       throw err;
     }
 

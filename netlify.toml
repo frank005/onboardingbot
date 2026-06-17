@@ -65,6 +65,11 @@
   to   = "/.netlify/functions/auth-me"
   status = 200
 
+[[redirects]]
+  from = "/api/auth/session-probe"
+  to   = "/.netlify/functions/auth-session-probe"
+  status = 200
+
 # --- SPA catch-all LAST ---
 [[redirects]]
   from = "/*"

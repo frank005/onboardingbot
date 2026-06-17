@@ -23,7 +23,7 @@ export function authMode() {
 }
 
 function secretKey() {
-  const raw = process.env.SESSION_JWT_SECRET;
+  const raw = process.env.SESSION_JWT_SECRET?.trim();
   if (!raw || raw.length < 32) {
     throw new Error(
       "SESSION_JWT_SECRET is not set or is shorter than 32 chars. Generate one with `openssl rand -hex 48`.",
@@ -32,12 +32,29 @@ function secretKey() {
   return new TextEncoder().encode(raw);
 }
 
+/** Coerce Agora profile fields into JWT-safe strings. */
+export function toSessionUser(customer) {
+  const id = String(customer?.id ?? "").trim();
+  const email = String(customer?.email ?? "").trim();
+  const name =
+    String(customer?.name ?? "").trim() || email || id;
+  if (!id) {
+    throw new Error("Session user id is empty after normalization");
+  }
+  return {
+    id: id.slice(0, 256),
+    email: email.slice(0, 320),
+    name: name.slice(0, 256),
+  };
+}
+
 export async function signSession(user) {
-  return await new SignJWT({ ...user })
+  const sessionUser = toSessionUser(user);
+  return await new SignJWT({ ...sessionUser })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(`${SESSION_TTL_SECONDS}s`)
-    .setSubject(user.id)
+    .setSubject(sessionUser.id)
     .sign(secretKey());
 }
 
