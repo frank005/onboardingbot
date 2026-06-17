@@ -128,18 +128,24 @@ export async function fetchCustomer(accessToken) {
       if (!res.ok) {
         const text = await res.text().catch(() => "");
         lastError = `${url} → ${res.status} ${text.slice(0, 200)}`;
+        console.warn(`[sso] customer probe miss: ${lastError}`);
         continue;
       }
       const json = await res.json();
+      console.log(
+        `[sso] customer probe hit ${url}, keys=${JSON.stringify(Object.keys(json))}`,
+      );
       const data =
         json.data ?? json.customer ?? json;
       try {
         return normalizeCustomer(data);
       } catch (normErr) {
         lastError = `${url} → 200 but ${normErr.message}`;
+        console.warn(`[sso] ${lastError}`);
       }
     } catch (err) {
       lastError = `${url} → ${err.message}`;
+      console.warn(`[sso] customer probe threw: ${lastError}`);
     }
   }
   throw new Error(

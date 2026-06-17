@@ -44,22 +44,43 @@ const handler = async (req) => {
     return Response.redirect(home.toString(), 307);
   }
 
+  let authError = "exchange_failed";
   try {
-    const token = await exchangeCodeForToken(code);
-    const customer = await fetchCustomer(token.access_token);
-    const sessionJwt = await signSession({
-      id: customer.id,
-      email: customer.email,
-      name: customer.name,
-    });
+    let token;
+    try {
+      token = await exchangeCodeForToken(code);
+    } catch (err) {
+      authError = "token_exchange_failed";
+      throw err;
+    }
+
+    let customer;
+    try {
+      customer = await fetchCustomer(token.access_token);
+    } catch (err) {
+      authError = "profile_fetch_failed";
+      throw err;
+    }
+
+    let sessionJwt;
+    try {
+      sessionJwt = await signSession({
+        id: customer.id,
+        email: customer.email,
+        name: customer.name,
+      });
+    } catch (err) {
+      authError = "session_failed";
+      throw err;
+    }
 
     const headers = new Headers({ Location: home.toString() });
     headers.append("Set-Cookie", clearStateHeader);
     headers.append("Set-Cookie", sessionCookieHeader(sessionJwt, req));
     return new Response(null, { status: 307, headers });
   } catch (err) {
-    console.error("[auth] callback failed:", err);
-    home.searchParams.set("authError", "exchange_failed");
+    console.error(`[auth] callback failed (${authError}):`, err);
+    home.searchParams.set("authError", authError);
     const headers = new Headers({ Location: home.toString() });
     headers.append("Set-Cookie", clearStateHeader);
     return new Response(null, { status: 307, headers });
